@@ -1,76 +1,99 @@
 const express = require('express');
-const app = express();
 const http = require('http');
-const socketIo = require('socket.io');
+const cors = require('cors');
 const mediasoup = require('mediasoup');
+const SockJS = require('sockjs');
 
+const app = express();
 const server = http.createServer(app);
-const io = socketIo(server);
-const port = 9000;
+const sockjsServer = SockJS.createServer();
+sockjsServer.installHandlers(server, { prefix: '/sockjs' });
 
-app.get('/', (req, res) => {
-  res.send('WebRTC Server is running!');
-});
+app.use(cors());
 
-server.listen(port, () => {
-  console.log(`Server is running on port ${port}`);
-});
+const workers = [];
+const mediaCodecs = [
+    {
+        kind: 'audio',
+        mimeType: 'audio/opus',
+        clockRate: 48000,
+        channels: 2,
+    },
+    {
+        kind: 'video',
+        mimeType: 'video/VP8',
+        clockRate: 90000,
+        parameters: {},
+    },
+];
 
-let workers = [];
-let nextMediasoupWorkerIdx = 0;
+let router;
+let producer;
+let transport;
 
 async function createWorkers() {
-  const { numWorkers } = require('./config').mediasoup;
-
-  for (let i = 0; i < numWorkers; i++) {
-    const worker = await mediasoup.createWorker({
-      logLevel: 'debug',
-      rtcMinPort: 40000,
-      rtcMaxPort: 49999,
-    });
-
-    worker.on('died', () => {
-      console.error('mediasoup Worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
-      setTimeout(() => process.exit(1), 2000);
-    });
-
-    workers.push(worker);
-  }
+    const numWorkers = 1; // 간단히 하나의 worker만 사용합니다.
+    for (let i = 0; i < numWorkers; i++) {
+        const worker = await mediasoup.createWorker();
+        workers.push(worker);
+    }
+    return workers[0];
 }
 
-function getMediasoupWorker() {
-  const worker = workers[nextMediasoupWorkerIdx];
-  if (++nextMediasoupWorkerIdx === workers.length) nextMediasoupWorkerIdx = 0;
-  return worker;
+async function createRouter(worker) {
+    router = await worker.createRouter({ mediaCodecs });
 }
 
-(async () => {
-  await createWorkers();
-})();
-io.on('connection', (socket) => {
-  console.log(`Client connected: ${socket.id}`);
+async function createWebRtcTransport(router) {
+    transport = await router.createWebRtcTransport({
+        listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
+        enableUdp: true,
+        enableTcp: true,
+    });
+    return transport;
+}
 
-  socket.on('createRoom', async (data, callback) => {
-    const worker = getMediasoupWorker();
-    const router = await worker.createRouter({
-      mediaCodecs: [
-        {
-          kind: 'video',
-          mimeType: 'video/VP8',
-          clockRate: 90000,
-          parameters: {},
-        },
-      ],
+sockjsServer.on('connection', async (socket) => {
+    console.log('클라이언트 연결 성공:', socket.id);
+
+    const worker = await createWorkers();
+    await createRouter(worker);
+    const transport = await createWebRtcTransport(router);
+
+    socket.write(JSON.stringify({ type: 'transportCreated', transportOptions: transport }));
+
+    socket.on('data', async (message) => {
+        const data = JSON.parse(message);
+
+        switch (data.type) {
+            case 'connectTransport':
+                await transport.connect({ dtlsParameters: data.dtlsParameters });
+                break;
+            case 'produce':
+                producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters });
+                socket.write(JSON.stringify({ type: 'produced', id: producer.id }));
+                break;
+            case 'consume':
+                const consumer = await transport.consume({
+                    producerId: producer.id,
+                    rtpCapabilities: data.rtpCapabilities,
+                });
+                socket.write(JSON.stringify({
+                    type: 'consumed',
+                    id: consumer.id,
+                    producerId: producer.id,
+                    kind: consumer.kind,
+                    rtpParameters: consumer.rtpParameters,
+                }));
+                break;
+        }
     });
 
-    const room = new Room(router, socket.id); // Room 클래스는 별도로 구현되어야 합니다.
-    roomList[socket.id] = room; // roomList는 현재 방의 목록을 관리하는 객체입니다.
+    socket.on('close', () => {
+        console.log('클라이언트 연결 종료:', socket.id);
+    });
+});
 
-    callback({ routerRtpCapabilities: router.rtpCapabilities });
-  });
-
-  socket.on('disconnect', () => {
-    console.log(`Client disconnected: ${socket.id}`);
-    delete roomList[socket.id];
-  });
+server.listen(9999, () => {
+    console.log("⭐️ 서버가 localhost:9999에서 실행 중입니다! ⭐️");
 });

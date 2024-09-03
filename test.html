@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>화면 공유</title>
+</head>
+<body>
+    <h1>화면 공유</h1>
+    <button id="startShare">화면 공유 시작</button>
+    <video id="remoteVideo" autoplay></video>
+
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script>
+        const socket = new SockJS('http://localhost:9999/sockjs');
+        let transport;
+        let producer;
+        let consumer;
+
+        document.getElementById('startShare').addEventListener('click', async () => {
+            // 사용자 화면 가져오기
+            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+            const videoTrack = stream.getVideoTracks()[0];
+
+            socket.onmessage = async (e) => {
+                const data = JSON.parse(e.data);
+
+                switch (data.type) {
+                    case 'transportCreated':
+                        transport = new mediasoupClient.Transport(data.transportOptions);
+                        await transport.connect({ dtlsParameters: data.transportOptions.dtlsParameters });
+                        break;
+
+                    case 'produced':
+                        producer = await transport.produce({ track: videoTrack });
+                        break;
+
+                    case 'consumed':
+                        const { kind, rtpParameters } = data;
+                        consumer = await transport.consume({ id: data.id, producerId: data.producerId, kind, rtpParameters });
+                        const remoteStream = new MediaStream();
+                        remoteStream.addTrack(consumer.track);
+                        document.getElementById('remoteVideo').srcObject = remoteStream;
+                        break;
+                }
+            };
+
+            socket.send(JSON.stringify({ type: 'connectTransport', dtlsParameters: transport.dtlsParameters }));
+            socket.send(JSON.stringify({ type: 'produce', kind: 'video', rtpParameters: videoTrack.getSettings() }));
+            socket.send(JSON.stringify({ type: 'consume', rtpCapabilities: transport.rtpCapabilities }));
+        });
+    </script>
+</body>
+</html>
