@@ -94,6 +94,6 @@ sockjsServer.on('connection', async (socket) => {
     });
 });
 
-server.listen(9999, () => {
+server.listen(9000, () => {
     console.log("⭐️ 서버가 localhost:9999에서 실행 중입니다! ⭐️");
 });
