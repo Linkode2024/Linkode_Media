@@ -94,6 +94,10 @@ sockjsServer.on('connection', async (socket) => {
     });
 });
 
+app.get('/',(req,res)=>{
+  res.sendFile(__dirname+'/test.html')
+});
+
 server.listen(9000, () => {
-    console.log("⭐️ 서버가 localhost:9999에서 실행 중입니다! ⭐️");
+    console.log("⭐️ 서버가 localhost:9999에서 실행 중입니다! ");
 });
