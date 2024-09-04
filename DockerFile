@@ -2,7 +2,6 @@ FROM node:20
 
 COPY package.json /src/package.json
 
-
 RUN \
 	set -x \
 	&& apt-get update \
