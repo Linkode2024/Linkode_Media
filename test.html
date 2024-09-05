@@ -4,13 +4,22 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>화면 공유</title>
+    <style>
+        video {
+            width: 100%;
+            max-width: 600px;
+            border: 2px solid #ccc;
+        }
+    </style>
 </head>
 <body>
     <h1>화면 공유</h1>
     <button id="startShare">화면 공유 시작</button>
-    <video id="remoteVideo" autoplay></video>
+    <video id="localVideo" autoplay muted></video> <!-- 화면 공유 중인 사용자 화면 -->
+    <video id="remoteVideo" autoplay></video>      <!-- 원격에서 받은 화면 -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
+    <script src="https://unpkg.com/mediasoup-client@3.6.30/lib/index.js"></script>
     <script>
         const socket = new SockJS('http://localhost:9999/sockjs');
         let transport;
@@ -18,36 +27,46 @@
         let consumer;
 
         document.getElementById('startShare').addEventListener('click', async () => {
-            // 사용자 화면 가져오기
-            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-            const videoTrack = stream.getVideoTracks()[0];
+            try {
+                // 사용자 화면 가져오기
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const videoTrack = stream.getVideoTracks()[0];
 
-            socket.onmessage = async (e) => {
-                const data = JSON.parse(e.data);
+                // 공유 중인 화면을 로컬에 렌더링
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = stream;
 
-                switch (data.type) {
-                    case 'transportCreated':
-                        transport = new mediasoupClient.Transport(data.transportOptions);
-                        await transport.connect({ dtlsParameters: data.transportOptions.dtlsParameters });
-                        break;
+                socket.onmessage = async (e) => {
+                    const data = JSON.parse(e.data);
 
-                    case 'produced':
-                        producer = await transport.produce({ track: videoTrack });
-                        break;
+                    switch (data.type) {
+                        case 'transportCreated':
+                            transport = new mediasoupClient.Transport(data.transportOptions);
+                            await transport.connect({ dtlsParameters: data.transportOptions.dtlsParameters });
+                            break;
 
-                    case 'consumed':
-                        const { kind, rtpParameters } = data;
-                        consumer = await transport.consume({ id: data.id, producerId: data.producerId, kind, rtpParameters });
-                        const remoteStream = new MediaStream();
-                        remoteStream.addTrack(consumer.track);
-                        document.getElementById('remoteVideo').srcObject = remoteStream;
-                        break;
-                }
-            };
+                        case 'produced':
+                            producer = await transport.produce({ track: videoTrack });
+                            break;
 
-            socket.send(JSON.stringify({ type: 'connectTransport', dtlsParameters: transport.dtlsParameters }));
-            socket.send(JSON.stringify({ type: 'produce', kind: 'video', rtpParameters: videoTrack.getSettings() }));
-            socket.send(JSON.stringify({ type: 'consume', rtpCapabilities: transport.rtpCapabilities }));
+                        case 'consumed':
+                            const { kind, rtpParameters } = data;
+                            consumer = await transport.consume({ id: data.id, producerId: data.producerId, kind, rtpParameters });
+                            const remoteStream = new MediaStream();
+                            remoteStream.addTrack(consumer.track);
+                            document.getElementById('remoteVideo').srcObject = remoteStream;
+                            break;
+                    }
+                };
+
+                // 서버에 전송
+                socket.send(JSON.stringify({ type: 'connectTransport', dtlsParameters: transport?.dtlsParameters || {} }));
+                socket.send(JSON.stringify({ type: 'produce', kind: 'video', rtpParameters: videoTrack.getSettings() }));
+                socket.send(JSON.stringify({ type: 'consume', rtpCapabilities: transport?.rtpCapabilities || {} }));
+
+            } catch (error) {
+                console.error('Error sharing the screen:', error);
+            }
         });
     </script>
 </body>
