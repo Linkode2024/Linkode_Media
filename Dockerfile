@@ -19,4 +19,4 @@ COPY . /src
 EXPOSE 9000
 
 # 앱 실행
-CMD ["node", "index.js"]
+CMD ["node", "src/index.js"]
