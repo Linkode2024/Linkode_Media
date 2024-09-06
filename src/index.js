@@ -99,5 +99,5 @@ app.get('/',(req,res)=>{
 });
 
 server.listen(9000, () => {
-    console.log("⭐️ 서버가 localhost:9999에서 실행 중입니다! ");
+    console.log("⭐️ 서버가 localhost:9000에서 실행 중입니다! ");
 });
