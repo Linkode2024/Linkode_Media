@@ -9,6 +9,7 @@
             width: 100%;
             max-width: 600px;
             border: 2px solid #ccc;
+            margin-bottom: 10px;
         }
     </style>
 </head>
@@ -16,7 +17,8 @@
     <h1>화면 공유</h1>
     <button id="startShare">화면 공유 시작</button>
     <video id="localVideo" autoplay muted></video> <!-- 화면 공유 중인 사용자 화면 -->
-    <video id="remoteVideo" autoplay></video>      <!-- 원격에서 받은 화면 -->
+
+    <div id="remoteVideos"></div> <!-- 여러 사용자의 화면을 표시할 영역 -->
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
     <script src="https://unpkg.com/mediasoup-client@3.6.30/lib/index.js"></script>
@@ -24,7 +26,7 @@
         const socket = new SockJS('http://localhost:9999/sockjs');
         let transport;
         let producer;
-        let consumer;
+        let consumers = {}; // 여러 사용자의 화면을 관리할 객체
 
         document.getElementById('startShare').addEventListener('click', async () => {
             try {
@@ -50,11 +52,18 @@
                             break;
 
                         case 'consumed':
-                            const { kind, rtpParameters } = data;
-                            consumer = await transport.consume({ id: data.id, producerId: data.producerId, kind, rtpParameters });
+                            // 여러 사용자의 화면을 추가하기 위해 새로운 video 요소 생성
+                            const { id, producerId, kind, rtpParameters } = data;
+                            const consumer = await transport.consume({ id, producerId, kind, rtpParameters });
+                            consumers[producerId] = consumer;
+
+                            // 새 video 요소 추가
                             const remoteStream = new MediaStream();
                             remoteStream.addTrack(consumer.track);
-                            document.getElementById('remoteVideo').srcObject = remoteStream;
+                            const remoteVideo = document.createElement('video');
+                            remoteVideo.srcObject = remoteStream;
+                            remoteVideo.autoplay = true;
+                            document.getElementById('remoteVideos').appendChild(remoteVideo);
                             break;
                     }
                 };
@@ -62,6 +71,8 @@
                 // 서버에 전송
                 socket.send(JSON.stringify({ type: 'connectTransport', dtlsParameters: transport?.dtlsParameters || {} }));
                 socket.send(JSON.stringify({ type: 'produce', kind: 'video', rtpParameters: videoTrack.getSettings() }));
+
+                // 다른 사용자의 화면을 받기 위한 요청
                 socket.send(JSON.stringify({ type: 'consume', rtpCapabilities: transport?.rtpCapabilities || {} }));
 
             } catch (error) {

@@ -28,8 +28,9 @@ const mediaCodecs = [
 ];
 
 let router;
-let producer;
-let transport;
+const producers = {}; // 각 유저의 화면을 공유할 때의 producer를 저장
+const consumers = {}; // 각 유저의 consumer를 저장
+let transports = {};  // 각 유저의 transport를 저장
 
 async function createWorkers() {
     const numWorkers = 1; // 간단히 하나의 worker만 사용합니다.
@@ -45,7 +46,7 @@ async function createRouter(worker) {
 }
 
 async function createWebRtcTransport(router) {
-    transport = await router.createWebRtcTransport({
+    const transport = await router.createWebRtcTransport({
         listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
         enableUdp: true,
         enableTcp: true,
@@ -58,44 +59,64 @@ sockjsServer.on('connection', async (socket) => {
 
     const worker = await createWorkers();
     await createRouter(worker);
-    const transport = await createWebRtcTransport(router);
+    transports[socket.id] = await createWebRtcTransport(router);
 
-    socket.write(JSON.stringify({ type: 'transportCreated', transportOptions: transport }));
+    socket.write(JSON.stringify({ type: 'transportCreated', transportOptions: transports[socket.id] }));
 
     socket.on('data', async (message) => {
         const data = JSON.parse(message);
 
         switch (data.type) {
             case 'connectTransport':
-                await transport.connect({ dtlsParameters: data.dtlsParameters });
+                await transports[socket.id].connect({ dtlsParameters: data.dtlsParameters });
                 break;
             case 'produce':
-                producer = await transport.produce({ kind: data.kind, rtpParameters: data.rtpParameters });
-                socket.write(JSON.stringify({ type: 'produced', id: producer.id }));
+                producers[socket.id] = await transports[socket.id].produce({ kind: data.kind, rtpParameters: data.rtpParameters });
+                socket.write(JSON.stringify({ type: 'produced', id: producers[socket.id].id }));
                 break;
             case 'consume':
-                const consumer = await transport.consume({
-                    producerId: producer.id,
-                    rtpCapabilities: data.rtpCapabilities,
-                });
-                socket.write(JSON.stringify({
-                    type: 'consumed',
-                    id: consumer.id,
-                    producerId: producer.id,
-                    kind: consumer.kind,
-                    rtpParameters: consumer.rtpParameters,
-                }));
+                if (producers[data.producerId]) {
+                    const consumer = await transports[socket.id].consume({
+                        producerId: producers[data.producerId].id,
+                        rtpCapabilities: data.rtpCapabilities,
+                    });
+                    consumers[socket.id] = consumer;
+                    socket.write(JSON.stringify({
+                        type: 'consumed',
+                        id: consumer.id,
+                        producerId: producers[data.producerId].id,
+                        kind: consumer.kind,
+                        rtpParameters: consumer.rtpParameters,
+                    }));
+                }
+                break;
+            case 'stopScreenShare':
+                // 유해 앱을 중단한 유저의 화면 공유를 종료
+                if (producers[socket.id]) {
+                    await producers[socket.id].close();
+                    delete producers[socket.id];
+                    socket.write(JSON.stringify({ type: 'screenShareStopped', id: socket.id }));
+                }
                 break;
         }
     });
 
     socket.on('close', () => {
         console.log('클라이언트 연결 종료:', socket.id);
+        // 유저가 나갈 경우, 미디어 서버와의 연결 해제
+        if (producers[socket.id]) {
+            producers[socket.id].close();
+            delete producers[socket.id];
+        }
+        if (transports[socket.id]) {
+            transports[socket.id].close();
+            delete transports[socket.id];
+        }
     });
 });
 
-app.get('/',(req,res)=>{
-  res.sendFile(__dirname+'/test.html')
+app.get('/', (req, res) => {
+    res.sendFile(__dirname + '/test.html');
 });
 
 server.listen(9000, () => {
