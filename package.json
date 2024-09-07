@@ -13,7 +13,13 @@
     "cors": "^2.8.5",
     "express": "^4.19.2",
     "mediasoup": "^3.14.12",
+    "mediasoup-client": "^3.7.16",
     "socket.io": "^4.7.5",
-    "sockjs": "^0.3.24"
+    "sockjs": "^0.3.24",
+    "sockjs-client": "^1.6.1"
+  },
+  "devDependencies": {
+    "webpack": "^5.94.0",
+    "webpack-cli": "^5.1.4"
   }
 }
