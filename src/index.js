@@ -1,15 +1,35 @@
+const fs = require('fs');
+const https = require('https');
 const express = require('express');
-const http = require('http');
 const cors = require('cors');
-const mediasoup = require('mediasoup');
 const SockJS = require('sockjs');
+const mediasoup = require('mediasoup');
+const path = require('path');
 
+// 파일 경로를 절대 경로로 설정
+const privateKey = fs.readFileSync(path.join(__dirname, 'config', '_wildcard.exampel.dev+3-key.pem'));
+const certificate = fs.readFileSync(path.join(__dirname, 'config', '_wildcard.exampel.dev+3.pem'));
+
+const credentials = { key: privateKey, cert: certificate };
+
+// Express 애플리케이션 생성
 const app = express();
-const server = http.createServer(app);
-const sockjsServer = SockJS.createServer();
-sockjsServer.installHandlers(server, { prefix: '/sockjs' });
 
-app.use(cors());
+// CORS 설정
+const corsOptions = {
+  origin: '*',  // 모든 도메인 허용
+  methods: ['GET', 'POST'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+};
+
+app.use(cors(corsOptions));
+
+// HTTPS 서버 생성
+const httpsServer = https.createServer(credentials, app);
+
+// SockJS 서버 생성
+const sockjsServer = SockJS.createServer();
+sockjsServer.installHandlers(httpsServer, { prefix: '/sockjs' });
 
 const workers = [];
 const mediaCodecs = [
@@ -119,6 +139,6 @@ app.get('/', (req, res) => {
     res.sendFile(__dirname + '/test.html');
 });
 
-server.listen(9000, () => {
-    console.log("⭐️ 서버가 localhost:9000에서 실행 중입니다! ");
-});
+httpsServer.listen(9000, () => {
+    console.log('🚀 HTTPS 서버가 https://localhost:9000에서 실행 중입니다!');
+  });

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>화면 공유</title>
+    <title>화면 공유 (로컬 테스트)</title>
     <style>
         video {
             width: 100%;
@@ -14,111 +14,111 @@
     </style>
 </head>
 <body>
-    <h1>화면 공유</h1>
+    <h1>화면 공유 (로컬 테스트)</h1>
     <button id="startShare">화면 공유 시작</button>
-    <video id="localVideo" autoplay muted></video> <!-- 화면 공유 중인 사용자 화면 -->
-
-    <div id="remoteVideos"></div> <!-- 여러 사용자의 화면을 표시할 영역 -->
+    <video id="localVideo" autoplay muted></video>
+    <div id="remoteVideos"></div>
 
     <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
-    <script src="https://unpkg.com/mediasoup-client@3.6.30/lib/index.js"></script>
+    <script src="https://unpkg.com/mediasoup-client@3.6.30/lib/mediasoup-client.min.js"></script>
+
     <script>
-        const socket = new SockJS('https://www.linkodemedia.shop/sockjs');
+        // MediasoupClient가 전역 객체로 노출되지 않을 경우를 대비한 폴백
+        const MediasoupClient = window.MediasoupClient || window.mediasoupClient;
+
+        // 로컬 테스트를 위해 SockJS 대신 더미 소켓 사용
+        const socket = {
+            send: (message) => console.log('Sent:', JSON.parse(message)),
+            onmessage: null
+        };
+
         let device;
         let transport;
         let producer;
 
-        document.getElementById('startShare').addEventListener('click', async () => {
+        async function initializeDevice() {
             try {
-                // Mediasoup device 초기화
-                device = new mediasoupClient.Device();
-                
-                // 서버에서 RTP Capabilities 가져오기
-                socket.send(JSON.stringify({ type: 'getRtpCapabilities' }));
-                
-                socket.onmessage = async (e) => {
-                    const data = JSON.parse(e.data);
+                device = new MediasoupClient.Device();
+                // 로컬 테스트를 위한 더미 RTP Capabilities
+                const dummyRtpCapabilities = {
+                    codecs: [
+                        {
+                            kind: 'video',
+                            mimeType: 'video/VP8',
+                            clockRate: 90000,
+                            parameters: {},
+                            rtcpFeedback: []
+                        }
+                    ],
+                    headerExtensions: []
+                };
+                await device.load({ routerRtpCapabilities: dummyRtpCapabilities });
+                console.log('Device initialized successfully');
+            } catch (error) {
+                console.error('Error initializing device:', error);
+            }
+        }
 
-                    switch (data.type) {
-                        case 'rtpCapabilities':
-                            // 서버에서 받은 RTP Capabilities로 device 로드
-                            await device.load({ routerRtpCapabilities: data.rtpCapabilities });
-                            break;
-
-                        case 'transportCreated':
-                            // 서버로부터 받은 transportOptions를 사용해 전송 transport 생성
-                            transport = device.createSendTransport(data.transportOptions);
-
-                            // Transport 연결 시도
-                            transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-                                try {
-                                    // 서버로 DTLS parameters 전송
-                                    socket.send(JSON.stringify({ type: 'connectTransport', dtlsParameters }));
-                                    callback();
-                                } catch (error) {
-                                    errback(error);
-                                }
-                            });
-
-                            // 화면을 공유할 때 Producer 생성
-                            transport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
-                                try {
-                                    // 서버로 produce 요청 전송
-                                    socket.send(JSON.stringify({
-                                        type: 'produce',
-                                        kind,
-                                        rtpParameters
-                                    }));
-
-                                    // 서버에서 Producer ID 받기
-                                    socket.onmessage = (e) => {
-                                        const data = JSON.parse(e.data);
-                                        if (data.type === 'produced') {
-                                            callback({ id: data.producerId });
-                                        }
-                                    };
-                                } catch (error) {
-                                    errback(error);
-                                }
-                            });
-
-                            // 화면 공유 시작
-                            const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                            const videoTrack = stream.getVideoTracks()[0];
-                            const params = { track: videoTrack };
-                            producer = await transport.produce(params);
-
-                            // 공유 중인 화면을 로컬에 렌더링
-                            const localVideo = document.getElementById('localVideo');
-                            localVideo.srcObject = stream;
-                            break;
-
-                        case 'produced':
-                            // Producer가 생성되었을 때
-                            console.log('Producer created', data.producerId);
-                            break;
-
-                        case 'consumed':
-                            // 서버에서 consumer 생성 후 데이터 수신
-                            const consumer = await transport.consume({
-                                id: data.id,
-                                producerId: data.producerId,
-                                kind: data.kind,
-                                rtpParameters: data.rtpParameters
-                            });
-
-                            // 다른 사용자의 화면을 표시할 video 요소 생성
-                            const remoteStream = new MediaStream();
-                            remoteStream.addTrack(consumer.track);
-                            const remoteVideo = document.createElement('video');
-                            remoteVideo.srcObject = remoteStream;
-                            remoteVideo.autoplay = true;
-                            document.getElementById('remoteVideos').appendChild(remoteVideo);
-                            break;
+        async function createTransport() {
+            try {
+                // 로컬 테스트를 위한 더미 transport 옵션
+                const dummyTransportOptions = {
+                    id: 'dummy-transport-id',
+                    iceParameters: {
+                        usernameFragment: 'dummy',
+                        password: 'dummy',
+                        iceLite: true
+                    },
+                    iceCandidates: [],
+                    dtlsParameters: {
+                        role: 'auto',
+                        fingerprints: [
+                            {
+                                algorithm: 'sha-256',
+                                value: 'dummy:fingerprint:value'
+                            }
+                        ]
                     }
                 };
+                transport = device.createSendTransport(dummyTransportOptions);
+
+                transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
+                    console.log('Transport connect event', dtlsParameters);
+                    callback();
+                });
+
+                transport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
+                    console.log('Transport produce event', { kind, rtpParameters });
+                    callback({ id: 'dummy-producer-id' });
+                });
+
+                console.log('Transport created successfully');
             } catch (error) {
-                console.error('Error sharing the screen:', error);
+                console.error('Error creating transport:', error);
+            }
+        }
+
+        async function startScreenShare() {
+            try {
+                const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
+                const videoTrack = stream.getVideoTracks()[0];
+                producer = await transport.produce({ track: videoTrack });
+
+                const localVideo = document.getElementById('localVideo');
+                localVideo.srcObject = stream;
+                console.log('Screen sharing started successfully');
+            } catch (error) {
+                console.error('Error starting screen share:', error);
+            }
+        }
+
+        document.getElementById('startShare').addEventListener('click', async () => {
+            try {
+                await initializeDevice();
+                await createTransport();
+                await startScreenShare();
+            } catch (error) {
+                console.error('Error in screen sharing process:', error);
             }
         });
     </script>
