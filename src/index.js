@@ -1,45 +1,35 @@
-//프로젝트 설정:
-// Node.js 프로젝트 초기화
-// 필요한 패키지 설치 (mediasoup, express 등)
 const https = require('https');
 const express = require('express');
 const app = express();
 const fs = require('fs');
+const MediasoupManager = require('./room');
+const SignalingHandler = require('./signaling');
 
-// 서버 구성:
-// Express를 사용한 기본 HTTP 서버 설정
-// WebSocket 서버 설정 (socket.io 등 사용)
+// HTTPS 서버 설정
 const options = {
     key: fs.readFileSync('../config/_wildcard.exampel.dev+3-key.pem'),
     cert: fs.readFileSync('../config/_wildcard.exampel.dev+3.pem')
-  };
+};
 const server = https.createServer(options, app);
-
 const io = require('socket.io')(server);
-io.on('connection', (socket) => {
-    console.log('새로운 클라이언트가 연결되었습니다.');
-  
-    // 여기에 WebSocket 이벤트 핸들러를 추가합니다.
-    socket.on('join-room', (roomId) => {
-      // 방 참여 로직
+
+const mediasoupManager = new MediasoupManager();
+const signalingHandler = new SignalingHandler(io, mediasoupManager);
+
+async function run() {
+    await mediasoupManager.init(1);
+
+    io.on('connection', (socket) => {
+        signalingHandler.handleConnection(socket);
     });
-  
-    socket.on('disconnect', () => {
-      console.log('클라이언트가 연결을 종료했습니다.');
+
+    const PORT = process.env.PORT || 3000;
+    server.listen(PORT, () => {
+        console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
     });
-  });
+}
 
-const PORT = process.env.PORT || 3000;
-server.listen(PORT, () => {
-console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
-});
-
-// mediasoup 설정:
-
-// Worker, Router, Transport 설정
-// 미디어 코덱 및 RTP 파라미터 설정
-
-
+run().catch(console.error);
 // 클라이언트 측 구현:
 
 // 기본 HTML, CSS, JavaScript 파일 생성
