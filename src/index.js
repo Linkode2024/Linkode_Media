@@ -1,144 +1,59 @@
-const fs = require('fs');
+//프로젝트 설정:
+// Node.js 프로젝트 초기화
+// 필요한 패키지 설치 (mediasoup, express 등)
 const https = require('https');
 const express = require('express');
-const cors = require('cors');
-const SockJS = require('sockjs');
-const mediasoup = require('mediasoup');
-const path = require('path');
-
-// 파일 경로를 절대 경로로 설정
-const privateKey = fs.readFileSync(path.join(__dirname, 'config', '_wildcard.exampel.dev+3-key.pem'));
-const certificate = fs.readFileSync(path.join(__dirname, 'config', '_wildcard.exampel.dev+3.pem'));
-
-const credentials = { key: privateKey, cert: certificate };
-
-// Express 애플리케이션 생성
 const app = express();
+const fs = require('fs');
 
-// CORS 설정
-const corsOptions = {
-  origin: '*',  // 모든 도메인 허용
-  methods: ['GET', 'POST'],
-  allowedHeaders: ['Content-Type', 'Authorization']
-};
+// 서버 구성:
+// Express를 사용한 기본 HTTP 서버 설정
+// WebSocket 서버 설정 (socket.io 등 사용)
+const options = {
+    key: fs.readFileSync('../config/_wildcard.exampel.dev+3-key.pem'),
+    cert: fs.readFileSync('../config/_wildcard.exampel.dev+3.pem')
+  };
+const server = https.createServer(options, app);
 
-app.use(cors(corsOptions));
-
-// HTTPS 서버 생성
-const httpsServer = https.createServer(credentials, app);
-
-// SockJS 서버 생성
-const sockjsServer = SockJS.createServer();
-sockjsServer.installHandlers(httpsServer, { prefix: '/sockjs' });
-
-const workers = [];
-const mediaCodecs = [
-    {
-        kind: 'audio',
-        mimeType: 'audio/opus',
-        clockRate: 48000,
-        channels: 2,
-    },
-    {
-        kind: 'video',
-        mimeType: 'video/VP8',
-        clockRate: 90000,
-        parameters: {},
-    },
-];
-
-let router;
-const producers = {}; // 각 유저의 화면을 공유할 때의 producer를 저장
-const consumers = {}; // 각 유저의 consumer를 저장
-let transports = {};  // 각 유저의 transport를 저장
-
-async function createWorkers() {
-    const numWorkers = 1; // 간단히 하나의 worker만 사용합니다.
-    for (let i = 0; i < numWorkers; i++) {
-        const worker = await mediasoup.createWorker();
-        workers.push(worker);
-    }
-    return workers[0];
-}
-
-async function createRouter(worker) {
-    router = await worker.createRouter({ mediaCodecs });
-}
-
-async function createWebRtcTransport(router) {
-    const transport = await router.createWebRtcTransport({
-        listenIps: [{ ip: '0.0.0.0', announcedIp: '127.0.0.1' }],
-        enableUdp: true,
-        enableTcp: true,
+const io = require('socket.io')(server);
+io.on('connection', (socket) => {
+    console.log('새로운 클라이언트가 연결되었습니다.');
+  
+    // 여기에 WebSocket 이벤트 핸들러를 추가합니다.
+    socket.on('join-room', (roomId) => {
+      // 방 참여 로직
     });
-    return transport;
-}
-
-sockjsServer.on('connection', async (socket) => {
-    console.log('클라이언트 연결 성공:', socket.id);
-
-    const worker = await createWorkers();
-    await createRouter(worker);
-    transports[socket.id] = await createWebRtcTransport(router);
-
-    socket.write(JSON.stringify({ type: 'transportCreated', transportOptions: transports[socket.id] }));
-
-    socket.on('data', async (message) => {
-        const data = JSON.parse(message);
-
-        switch (data.type) {
-            case 'connectTransport':
-                await transports[socket.id].connect({ dtlsParameters: data.dtlsParameters });
-                break;
-            case 'produce':
-                producers[socket.id] = await transports[socket.id].produce({ kind: data.kind, rtpParameters: data.rtpParameters });
-                socket.write(JSON.stringify({ type: 'produced', id: producers[socket.id].id }));
-                break;
-            case 'consume':
-                if (producers[data.producerId]) {
-                    const consumer = await transports[socket.id].consume({
-                        producerId: producers[data.producerId].id,
-                        rtpCapabilities: data.rtpCapabilities,
-                    });
-                    consumers[socket.id] = consumer;
-                    socket.write(JSON.stringify({
-                        type: 'consumed',
-                        id: consumer.id,
-                        producerId: producers[data.producerId].id,
-                        kind: consumer.kind,
-                        rtpParameters: consumer.rtpParameters,
-                    }));
-                }
-                break;
-            case 'stopScreenShare':
-                // 유해 앱을 중단한 유저의 화면 공유를 종료
-                if (producers[socket.id]) {
-                    await producers[socket.id].close();
-                    delete producers[socket.id];
-                    socket.write(JSON.stringify({ type: 'screenShareStopped', id: socket.id }));
-                }
-                break;
-        }
+  
+    socket.on('disconnect', () => {
+      console.log('클라이언트가 연결을 종료했습니다.');
     });
-
-    socket.on('close', () => {
-        console.log('클라이언트 연결 종료:', socket.id);
-        // 유저가 나갈 경우, 미디어 서버와의 연결 해제
-        if (producers[socket.id]) {
-            producers[socket.id].close();
-            delete producers[socket.id];
-        }
-        if (transports[socket.id]) {
-            transports[socket.id].close();
-            delete transports[socket.id];
-        }
-    });
-});
-
-app.get('/', (req, res) => {
-    res.sendFile(__dirname + '/test.html');
-});
-
-httpsServer.listen(9000, () => {
-    console.log('🚀 HTTPS 서버가 https://localhost:9000에서 실행 중입니다!');
   });
+
+const PORT = process.env.PORT || 3000;
+server.listen(PORT, () => {
+console.log(`서버가 포트 ${PORT}에서 실행 중입니다.`);
+});
+
+// mediasoup 설정:
+
+// Worker, Router, Transport 설정
+// 미디어 코덱 및 RTP 파라미터 설정
+
+
+// 클라이언트 측 구현:
+
+// 기본 HTML, CSS, JavaScript 파일 생성
+// getUserMedia()를 사용한 화면 공유 기능 구현
+// WebRTC 연결 설정
+
+
+// 서버-클라이언트 통신:
+
+// 시그널링 구현 (Offer/Answer 교환)
+// ICE 후보 교환 구현
+
+
+// 미디어 스트림 처리:
+
+// Producer 생성 (화면 공유 스트림)
+// Consumer 생성 및 관리
