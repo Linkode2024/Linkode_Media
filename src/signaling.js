@@ -39,7 +39,48 @@ class SignalingHandler {
     }
   }
 
-  // 다른 핸들러 메서드들도 유사한 방식으로 구현...
+  async handleProduce(socket, roomId, producerId, kind, rtpParameters, callback) {
+    try {
+      const { id } = await this.mediasoupManager.produce(roomId, producerId, kind, rtpParameters);
+      callback({ id });
+      
+      // 룸의 다른 참가자들에게 새 producer가 생겼음을 알림
+      socket.to(roomId).emit('new-producer', { producerId, id });
+    } catch (error) {
+      console.error('Produce error:', error);
+      callback({ error: error.message });
+    }
+  }
+
+  async handleConsume(socket, roomId, consumerId, producerId, rtpCapabilities, callback) {
+    try {
+      const consumeParams = await this.mediasoupManager.consume(roomId, consumerId, producerId, rtpCapabilities);
+      callback(consumeParams);
+    } catch (error) {
+      console.error('Consume error:', error);
+      callback({ error: error.message });
+    }
+  }
+
+  async handleStartScreenShare(socket, roomId, producerId) {
+    try {
+      await this.mediasoupManager.startScreenSharing(roomId, producerId);
+      socket.to(roomId).emit('screen-share-started', { producerId });
+    } catch (error) {
+      console.error('Start screen share error:', error);
+      socket.emit('screen-share-error', { error: error.message });
+    }
+  }
+
+  async handleStopScreenShare(socket, roomId, producerId) {
+    try {
+      await this.mediasoupManager.stopScreenSharing(roomId, producerId);
+      socket.to(roomId).emit('screen-share-stopped', { producerId });
+    } catch (error) {
+      console.error('Stop screen share error:', error);
+      socket.emit('screen-share-error', { error: error.message });
+    }
+  }
 
   handleDisconnect(socket) {
     console.log('클라이언트가 연결을 종료했습니다.');

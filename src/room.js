@@ -110,14 +110,111 @@ class MediasoupManager {
         return { consumer, transport };
     }
 
-    async startScreenSharing(roomId, userId, producer) {
-        await this.addProducer(roomId, userId, producer);
-        // Notify all users in the room to start consuming
+    async produce(roomId, producerId, kind, rtpParameters) {
+        const room = this.rooms.get(roomId);
+        if (!room) {
+          throw new Error('Room not found');
+        }
+    
+        const producer = await room.producerTransport.produce({
+          kind,
+          rtpParameters
+        });
+    
+        room.producers.set(producerId, producer);
+    
+        producer.on('transportclose', () => {
+          console.log('Producer transport closed');
+          room.producers.delete(producerId);
+        });
+    
+        return { id: producer.id };
     }
-
-    async stopScreenSharing(roomId, userId) {
-        await this.removeProducer(roomId, userId);
-        // Notify all users in the room to stop consuming
+    
+    async consume(roomId, consumerId, producerId, rtpCapabilities) {
+        const room = this.rooms.get(roomId);
+        if (!room) {
+            throw new Error('Room not found');
+        }
+    
+        const producer = room.producers.get(producerId);
+        if (!producer) {
+            throw new Error('Producer not found');
+        }
+    
+        if (!this.router.canConsume({
+            producerId: producer.id,
+            rtpCapabilities,
+        })) {
+            throw new Error('Can\'t consume');
+        }
+    
+        const consumer = await room.consumerTransport.consume({
+            producerId: producer.id,
+            rtpCapabilities,
+            paused: true, // 소비자는 처음에 일시 중지된 상태로 시작
+        });
+    
+        room.consumers.set(consumerId, consumer);
+    
+        consumer.on('transportclose', () => {
+            console.log('Consumer transport closed');
+            room.consumers.delete(consumerId);
+        });
+    
+        consumer.on('producerclose', () => {
+            console.log('Producer of consumer closed');
+            room.consumers.delete(consumerId);
+        });
+    
+        return {
+            id: consumer.id,
+            producerId: producer.id,
+            kind: consumer.kind,
+            rtpParameters: consumer.rtpParameters,
+        };
+    }
+    
+    async startScreenSharing(roomId, producerId) {
+        const room = this.rooms.get(roomId);
+        if (!room) {
+            throw new Error('Room not found');
+        }
+    
+        const producer = room.producers.get(producerId);
+        if (!producer) {
+            throw new Error('Producer not found');
+        }
+    
+        await producer.resume();
+    
+        // 룸의 모든 소비자에게 새 스트림을 알림
+        room.consumers.forEach(async (consumer) => {
+            if (consumer.producerId === producerId) {
+                await consumer.resume();
+            }
+        });
+    }
+    
+    async stopScreenSharing(roomId, producerId) {
+        const room = this.rooms.get(roomId);
+        if (!room) {
+            throw new Error('Room not found');
+        }
+    
+        const producer = room.producers.get(producerId);
+        if (!producer) {
+            throw new Error('Producer not found');
+        }
+    
+        await producer.pause();
+    
+        // 룸의 모든 소비자에게 스트림 중지를 알림
+        room.consumers.forEach(async (consumer) => {
+            if (consumer.producerId === producerId) {
+                await consumer.pause();
+            }
+        });
     }
 }
 

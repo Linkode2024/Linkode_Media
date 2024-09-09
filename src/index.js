@@ -21,6 +21,25 @@ async function run() {
 
     io.on('connection', (socket) => {
         signalingHandler.handleConnection(socket);
+
+        // 기존 이벤트 핸들러
+        socket.on('join-room', (roomId, userId) => signalingHandler.handleJoinRoom(socket, roomId, userId));
+
+        // 새로운 미디어 스트림 관련 이벤트 핸들러들
+        socket.on('create-producer-transport', (roomId, callback) => signalingHandler.handleCreateProducerTransport(socket, roomId, callback));
+        socket.on('create-consumer-transport', (roomId, callback) => signalingHandler.handleCreateConsumerTransport(socket, roomId, callback));
+        socket.on('connect-producer-transport', (dtlsParameters, callback) => signalingHandler.handleConnectProducerTransport(socket, dtlsParameters, callback));
+        socket.on('connect-consumer-transport', (dtlsParameters, callback) => signalingHandler.handleConnectConsumerTransport(socket, dtlsParameters, callback));
+        socket.on('produce', (roomId, producerId, kind, rtpParameters, callback) => 
+            signalingHandler.handleProduce(socket, roomId, producerId, kind, rtpParameters, callback));
+        socket.on('consume', (roomId, consumerId, producerId, rtpCapabilities, callback) => 
+            signalingHandler.handleConsume(socket, roomId, consumerId, producerId, rtpCapabilities, callback));
+        socket.on('start-screen-share', (roomId, producerId) => 
+            signalingHandler.handleStartScreenShare(socket, roomId, producerId));
+        socket.on('stop-screen-share', (roomId, producerId) => 
+            signalingHandler.handleStopScreenShare(socket, roomId, producerId));
+
+        socket.on('disconnect', () => signalingHandler.handleDisconnect(socket));
     });
 
     const PORT = process.env.PORT || 3000;
@@ -30,20 +49,3 @@ async function run() {
 }
 
 run().catch(console.error);
-// 클라이언트 측 구현:
-
-// 기본 HTML, CSS, JavaScript 파일 생성
-// getUserMedia()를 사용한 화면 공유 기능 구현
-// WebRTC 연결 설정
-
-
-// 서버-클라이언트 통신:
-
-// 시그널링 구현 (Offer/Answer 교환)
-// ICE 후보 교환 구현
-
-
-// 미디어 스트림 처리:
-
-// Producer 생성 (화면 공유 스트림)
-// Consumer 생성 및 관리
