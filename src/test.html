@@ -4,12 +4,12 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Study Room Screen Sharing</title>
-    <script src="/socket.io/socket.io.js"></script>
     <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <style>
-        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         button { margin-top: 10px; }
         #status { margin-top: 20px; }
+        #localVideo { width: 640px; height: 480px; background-color: #ddd; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -19,17 +19,20 @@
     <button id="startScreen" disabled>Start Screen Share</button>
     <button id="stopScreen" disabled>Stop Screen Share</button>
     <div id="status"></div>
+    <video id="localVideo" autoplay playsinline></video>
 
     <script>
         let producerTransport;
         let screenProducer;
         let currentRoom;
+        let producerTransportId;
 
         const joinRoomBtn = document.getElementById('joinRoom');
         const startScreenBtn = document.getElementById('startScreen');
         const stopScreenBtn = document.getElementById('stopScreen');
         const roomIdInput = document.getElementById('roomId');
         const statusDiv = document.getElementById('status');
+        const localVideo = document.getElementById('localVideo');
 
         const socket = io('https://localhost:3000', {
             withCredentials: true,
@@ -64,31 +67,73 @@
         });
 
         async function createProducerTransport() {
-            socket.emit('create-producer-transport', currentRoom, (response) => {
+            try {
+                const response = await new Promise((resolve) => {
+                    socket.emit('create-producer-transport', currentRoom, resolve);
+                });
+
                 if (response.error) {
-                    updateStatus('Error creating producer transport: ' + response.error);
-                    return;
+                    throw new Error(response.error);
                 }
+
                 producerTransport = new RTCPeerConnection(response.params);
+                producerTransportId = response.params.id;
+
                 producerTransport.onicecandidate = ({ candidate }) => {
                     if (candidate) {
-                        socket.emit('ice-candidate', { candidate });
+                        socket.emit('ice-candidate', currentRoom, producerTransportId, candidate);
                     }
                 };
-                updateStatus('Producer transport created');
-            });
+
+                const offer = await producerTransport.createOffer();
+                await producerTransport.setLocalDescription(offer);
+
+                const dtlsParameters = producerTransport.getConfiguration().certificates[0]
+                    ? producerTransport.getConfiguration().certificates[0].getFingerprints()
+                    : undefined;
+
+                await new Promise((resolve, reject) => {
+                    socket.emit('connect-producer-transport', currentRoom, producerTransportId, { dtlsParameters }, (response) => {
+                        if (response.error) {
+                            reject(new Error(response.error));
+                        } else {
+                            resolve();
+                        }
+                    });
+                });
+
+                updateStatus('Producer transport created and connected');
+            } catch (error) {
+                console.error('Error creating producer transport:', error);
+                updateStatus('Error creating producer transport: ' + error.message);
+            }
         }
 
         startScreenBtn.addEventListener('click', async () => {
             try {
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const track = stream.getVideoTracks()[0];
-                screenProducer = await producerTransport.addTrack(track, stream);
-                socket.emit('produce', currentRoom, 'screen-producer', 'video', screenProducer.getParameters(), (response) => {
+                
+                localVideo.srcObject = stream;
+                
+                const params = {
+                    track,
+                    encodings: [
+                        { maxBitrate: 100000 },
+                        { maxBitrate: 300000 },
+                        { maxBitrate: 900000 }
+                    ],
+                    codecOptions: {
+                        videoGoogleStartBitrate: 1000
+                    }
+                };
+                
+                socket.emit('produce', currentRoom, producerTransportId, 'video', params, (response) => {
                     if (response.error) {
                         updateStatus('Error starting screen share: ' + response.error);
                         return;
                     }
+                    screenProducer = response.id;
                     socket.emit('start-screen-share', currentRoom, response.id);
                     updateStatus('Screen sharing started');
                     startScreenBtn.disabled = true;
@@ -107,20 +152,20 @@
 
         function stopScreenShare() {
             if (screenProducer) {
-                socket.emit('stop-screen-share', currentRoom, screenProducer.id);
-                screenProducer.track.stop();
-                screenProducer = null;
+                socket.emit('stop-screen-share', currentRoom, screenProducer);
+                if (localVideo.srcObject) {
+                    localVideo.srcObject.getTracks().forEach(track => track.stop());
+                }
+                localVideo.srcObject = null;
                 updateStatus('Screen sharing stopped');
                 startScreenBtn.disabled = false;
                 stopScreenBtn.disabled = true;
+                screenProducer = null;
             }
         }
 
         function updateStatus(message) {
-            const statusDiv = document.getElementById('status');
-            if (statusDiv) {
-                statusDiv.innerHTML += `<p>${message}</p>`;
-            }
+            statusDiv.innerHTML += `<p>${message}</p>`;
             console.log(message);
         }
 

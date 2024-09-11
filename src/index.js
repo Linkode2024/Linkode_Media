@@ -50,7 +50,9 @@ async function run() {
         // 새로운 미디어 스트림 관련 이벤트 핸들러들
         socket.on('create-producer-transport', (roomId, callback) => signalingHandler.handleCreateProducerTransport(socket, roomId, callback));
         socket.on('create-consumer-transport', (roomId, callback) => signalingHandler.handleCreateConsumerTransport(socket, roomId, callback));
-        socket.on('connect-producer-transport', (dtlsParameters, callback) => signalingHandler.handleConnectProducerTransport(socket, dtlsParameters, callback));
+        socket.on('connect-producer-transport', (roomId, transportId, dtlsParameters, callback) => 
+            signalingHandler.handleConnectProducerTransport(socket, roomId, transportId, dtlsParameters, callback)
+        );      
         socket.on('connect-consumer-transport', (dtlsParameters, callback) => signalingHandler.handleConnectConsumerTransport(socket, dtlsParameters, callback));
         socket.on('produce', (roomId, producerId, kind, rtpParameters, callback) => 
             signalingHandler.handleProduce(socket, roomId, producerId, kind, rtpParameters, callback));
