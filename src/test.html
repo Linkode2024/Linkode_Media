@@ -9,6 +9,7 @@
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         button { margin-top: 10px; }
         #status, #log { margin-top: 20px; border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; }
+        #localVideo { width: 640px; height: 480px; background-color: #ddd; margin-top: 20px; }
     </style>
 </head>
 <body>
@@ -19,6 +20,7 @@
     <button id="stopScreen" disabled>Stop Screen Share</button>
     <div id="status"></div>
     <div id="log"></div>
+    <video id="localVideo" autoplay playsinline></video>
 
     <script>
         let producerTransport;
@@ -32,6 +34,7 @@
         const roomIdInput = document.getElementById('roomId');
         const statusDiv = document.getElementById('status');
         const logDiv = document.getElementById('log');
+        const localVideo = document.getElementById('localVideo');
 
         function log(message) {
             console.log(message);
@@ -100,9 +103,18 @@
                 log('Created offer:', offer);
                 await producerTransport.setLocalDescription(offer);
 
-                const dtlsParameters = producerTransport.getConfiguration().certificates 
-                    ? producerTransport.getConfiguration().certificates[0].getFingerprints()
-                    : undefined;
+                const dtlsParameters = producerTransport.getConfiguration().certificates
+                    ? producerTransport.getConfiguration().certificates[0].getFingerprints().map(fp => ({
+                        algorithm: fp.algorithm,
+                        value: fp.value
+                    }))
+                    : producerTransport.localDescription.sdp
+                        .split('\r\n')
+                        .filter(line => line.startsWith('a=fingerprint:'))
+                        .map(line => {
+                            const [, algorithm, fingerprint] = line.split(' ');
+                            return { algorithm, value: fingerprint };
+                        });
 
                 log('DTLS parameters:', dtlsParameters);
 
@@ -131,6 +143,8 @@
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const track = stream.getVideoTracks()[0];
                 
+                localVideo.srcObject = stream;
+                
                 log('Got screen share track:', track);
                 
                 const params = {
@@ -144,6 +158,12 @@
                         videoGoogleStartBitrate: 1000
                     }
                 };
+                
+                const codecs = RTCRtpSender.getCapabilities('video').codecs;
+                params.codecs = codecs.filter(codec => codec.mimeType === 'video/VP8').map((codec, index) => ({
+                    ...codec,
+                    payloadType: 96 + index
+                }));
                 
                 log('Producing with params:', params);
                 
@@ -176,6 +196,10 @@
             if (screenProducer) {
                 log('Stopping screen share...');
                 socket.emit('stop-screen-share', currentRoom, screenProducer);
+                if (localVideo.srcObject) {
+                    localVideo.srcObject.getTracks().forEach(track => track.stop());
+                }
+                localVideo.srcObject = null;
                 updateStatus('Screen sharing stopped');
                 startScreenBtn.disabled = false;
                 stopScreenBtn.disabled = true;

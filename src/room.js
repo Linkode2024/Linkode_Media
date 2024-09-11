@@ -94,8 +94,9 @@ class MediasoupManager {
         };
     }
 
-    async connectTransport(roomId, transportId, dtlsParameters) {
+    async connectTransport(roomId, transportId, { dtlsParameters }) {
         console.log(`Connecting transport: ${transportId} in room: ${roomId}`);
+        console.log('DTLS parameters:', dtlsParameters);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -110,6 +111,7 @@ class MediasoupManager {
 
     async produce(roomId, transportId, kind, rtpParameters) {
         console.log(`Producing ${kind} in room: ${roomId} with transport: ${transportId}`);
+        console.log('RTP parameters:', rtpParameters);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -118,7 +120,20 @@ class MediasoupManager {
         if (!transport) {
             throw new Error('Transport not found');
         }
-        const producer = await transport.produce({ kind, rtpParameters });
+        
+        // Validate and prepare RTP parameters
+        const validRtpParameters = {
+            codecs: rtpParameters.codecs.map(codec => ({
+                mimeType: codec.mimeType,
+                payloadType: codec.payloadType,
+                clockRate: codec.clockRate,
+                channels: codec.channels,
+                parameters: codec.sdpFmtpLine ? { sdpFmtpLine: codec.sdpFmtpLine } : {}
+            })),
+            encodings: rtpParameters.encodings
+        };
+        
+        const producer = await transport.produce({ kind, rtpParameters: validRtpParameters });
         room.producers.set(producer.id, producer);
         console.log(`Producer created with ID: ${producer.id}`);
         return { id: producer.id };
