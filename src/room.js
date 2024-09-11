@@ -37,7 +37,7 @@ class MediasoupManager {
     async init(numWorkers = 1) {
         for (let i = 0; i < numWorkers; i++) {
             const worker = await mediasoup.createWorker({
-                logLevel: 'warn',
+                logLevel: 'debug',
                 logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'],
             });
             this.workers.push(worker);
@@ -46,19 +46,22 @@ class MediasoupManager {
     }
 
     async createRoom(roomId) {
+        console.log(`Creating room: ${roomId}`);
         if (!this.rooms.has(roomId)) {
             const worker = this.workers[0];  // 단순화를 위해 첫 번째 worker 사용
             const router = await worker.createRouter(this.routerOptions);
             this.rooms.set(roomId, {
                 router: router,
                 producers: new Map(),
-                consumers: new Map()
+                consumers: new Map(),
+                transports: new Map()
             });
         }
         return this.rooms.get(roomId);
     }
 
     async createWebRtcTransport(roomId) {
+        console.log(`Creating WebRTC transport for room: ${roomId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -77,13 +80,9 @@ class MediasoupManager {
         };
     
         const transport = await room.router.createWebRtcTransport(transportOptions);
-        
-        // 새로 생성된 transport를 room 객체에 저장
-        if (!room.transports) {
-            room.transports = new Map();
-        }
         room.transports.set(transport.id, transport);
     
+        console.log(`WebRTC transport created with ID: ${transport.id}`);
         return {
             transport,
             params: {
@@ -96,39 +95,37 @@ class MediasoupManager {
     }
 
     async connectTransport(roomId, transportId, dtlsParameters) {
+        console.log(`Connecting transport: ${transportId} in room: ${roomId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
-        }
-        if (!room.transports) {
-            throw new Error('No transports in room');
         }
         const transport = room.transports.get(transportId);
         if (!transport) {
             throw new Error('Transport not found');
         }
         await transport.connect({ dtlsParameters });
+        console.log(`Transport ${transportId} connected`);
     }
 
-    async produce(roomId, producerId, transportId, kind, rtpParameters) {
-        console.log('Produce params:', { roomId, producerId, transportId, kind, rtpParameters });
+    async produce(roomId, transportId, kind, rtpParameters) {
+        console.log(`Producing ${kind} in room: ${roomId} with transport: ${transportId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
-        }
-        if (!room.transports) {
-            throw new Error('No transports in room');
         }
         const transport = room.transports.get(transportId);
         if (!transport) {
             throw new Error('Transport not found');
         }
         const producer = await transport.produce({ kind, rtpParameters });
-        room.producers.set(producerId, producer);
+        room.producers.set(producer.id, producer);
+        console.log(`Producer created with ID: ${producer.id}`);
         return { id: producer.id };
     }
 
     async consume(roomId, consumerId, producerId, rtpCapabilities) {
+        console.log(`Consuming in room: ${roomId}, consumer: ${consumerId}, producer: ${producerId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -150,6 +147,7 @@ class MediasoupManager {
             paused: true,
         });
         room.consumers.set(consumerId, consumer);
+        console.log(`Consumer created with ID: ${consumer.id}`);
         return {
             transportParams: transport.params,
             consumerParams: {
@@ -162,6 +160,7 @@ class MediasoupManager {
     }
 
     async startScreenSharing(roomId, producerId) {
+        console.log(`Starting screen sharing in room: ${roomId}, producer: ${producerId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -171,9 +170,11 @@ class MediasoupManager {
             throw new Error('Producer not found');
         }
         await producer.resume();
+        console.log(`Screen sharing started for producer: ${producerId}`);
     }
 
     async stopScreenSharing(roomId, producerId) {
+        console.log(`Stopping screen sharing in room: ${roomId}, producer: ${producerId}`);
         const room = this.rooms.get(roomId);
         if (!room) {
             throw new Error('Room not found');
@@ -183,8 +184,11 @@ class MediasoupManager {
             throw new Error('Producer not found');
         }
         await producer.pause();
+        console.log(`Screen sharing stopped for producer: ${producerId}`);
     }
+
     getTransport(roomId, transportId) {
+        console.log(`Getting transport: ${transportId} in room: ${roomId}`);
         const room = this.rooms.get(roomId);
         if (!room || !room.transports) {
             throw new Error('Room or transports not found');

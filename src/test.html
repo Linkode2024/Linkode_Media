@@ -8,8 +8,7 @@
     <style>
         body { font-family: Arial, sans-serif; max-width: 800px; margin: 0 auto; padding: 20px; }
         button { margin-top: 10px; }
-        #status { margin-top: 20px; }
-        #localVideo { width: 640px; height: 480px; background-color: #ddd; margin-top: 20px; }
+        #status, #log { margin-top: 20px; border: 1px solid #ccc; padding: 10px; height: 200px; overflow-y: auto; }
     </style>
 </head>
 <body>
@@ -19,7 +18,7 @@
     <button id="startScreen" disabled>Start Screen Share</button>
     <button id="stopScreen" disabled>Stop Screen Share</button>
     <div id="status"></div>
-    <video id="localVideo" autoplay playsinline></video>
+    <div id="log"></div>
 
     <script>
         let producerTransport;
@@ -32,7 +31,13 @@
         const stopScreenBtn = document.getElementById('stopScreen');
         const roomIdInput = document.getElementById('roomId');
         const statusDiv = document.getElementById('status');
-        const localVideo = document.getElementById('localVideo');
+        const logDiv = document.getElementById('log');
+
+        function log(message) {
+            console.log(message);
+            logDiv.innerHTML += `<p>${message}</p>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
 
         const socket = io('https://localhost:3000', {
             withCredentials: true,
@@ -40,12 +45,12 @@
         });
 
         socket.on('connect', () => {
-            console.log('Connected to server');
+            log('Connected to server');
             updateStatus('Connected to server');
         });
 
         socket.on('connect_error', (error) => {
-            console.error('Connection error:', error);
+            log('Connection error:', error);
             updateStatus('Connection error: ' + error.message);
         });
 
@@ -54,6 +59,7 @@
             if (roomId) {
                 currentRoom = roomId;
                 socket.emit('join-room', roomId, 'user-' + Math.random().toString(36).substr(2, 9));
+                log('Joining room: ' + roomId);
                 updateStatus('Joining room: ' + roomId);
             } else {
                 updateStatus('Please enter a room number');
@@ -61,6 +67,7 @@
         });
 
         socket.on('get-rtp-capabilities', async (routerRtpCapabilities) => {
+            log('Received RTP capabilities:', routerRtpCapabilities);
             updateStatus('Joined room successfully');
             await createProducerTransport();
             startScreenBtn.disabled = false;
@@ -68,9 +75,12 @@
 
         async function createProducerTransport() {
             try {
+                log('Creating producer transport...');
                 const response = await new Promise((resolve) => {
                     socket.emit('create-producer-transport', currentRoom, resolve);
                 });
+
+                log('Received producer transport response:', response);
 
                 if (response.error) {
                     throw new Error(response.error);
@@ -81,19 +91,24 @@
 
                 producerTransport.onicecandidate = ({ candidate }) => {
                     if (candidate) {
+                        log('ICE candidate:', candidate);
                         socket.emit('ice-candidate', currentRoom, producerTransportId, candidate);
                     }
                 };
 
                 const offer = await producerTransport.createOffer();
+                log('Created offer:', offer);
                 await producerTransport.setLocalDescription(offer);
 
-                const dtlsParameters = producerTransport.getConfiguration().certificates[0]
+                const dtlsParameters = producerTransport.getConfiguration().certificates 
                     ? producerTransport.getConfiguration().certificates[0].getFingerprints()
                     : undefined;
 
+                log('DTLS parameters:', dtlsParameters);
+
                 await new Promise((resolve, reject) => {
                     socket.emit('connect-producer-transport', currentRoom, producerTransportId, { dtlsParameters }, (response) => {
+                        log('Connect producer transport response:', response);
                         if (response.error) {
                             reject(new Error(response.error));
                         } else {
@@ -102,19 +117,21 @@
                     });
                 });
 
+                log('Producer transport created and connected');
                 updateStatus('Producer transport created and connected');
             } catch (error) {
-                console.error('Error creating producer transport:', error);
+                log('Error creating producer transport:', error);
                 updateStatus('Error creating producer transport: ' + error.message);
             }
         }
 
         startScreenBtn.addEventListener('click', async () => {
             try {
+                log('Starting screen share...');
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
                 const track = stream.getVideoTracks()[0];
                 
-                localVideo.srcObject = stream;
+                log('Got screen share track:', track);
                 
                 const params = {
                     track,
@@ -128,7 +145,10 @@
                     }
                 };
                 
+                log('Producing with params:', params);
+                
                 socket.emit('produce', currentRoom, producerTransportId, 'video', params, (response) => {
+                    log('Produce response:', response);
                     if (response.error) {
                         updateStatus('Error starting screen share: ' + response.error);
                         return;
@@ -141,9 +161,11 @@
                 });
 
                 track.onended = () => {
+                    log('Screen share track ended');
                     stopScreenShare();
                 };
             } catch (error) {
+                log('Error accessing screen:', error);
                 updateStatus('Error accessing screen: ' + error.message);
             }
         });
@@ -152,11 +174,8 @@
 
         function stopScreenShare() {
             if (screenProducer) {
+                log('Stopping screen share...');
                 socket.emit('stop-screen-share', currentRoom, screenProducer);
-                if (localVideo.srcObject) {
-                    localVideo.srcObject.getTracks().forEach(track => track.stop());
-                }
-                localVideo.srcObject = null;
                 updateStatus('Screen sharing stopped');
                 startScreenBtn.disabled = false;
                 stopScreenBtn.disabled = true;
@@ -165,15 +184,17 @@
         }
 
         function updateStatus(message) {
-            statusDiv.innerHTML += `<p>${message}</p>`;
-            console.log(message);
+            statusDiv.textContent = message;
+            log('Status update: ' + message);
         }
 
         socket.on('screen-share-started', ({ producerId }) => {
+            log('Screen share started by another user:', producerId);
             updateStatus('Screen share started by another user: ' + producerId);
         });
 
         socket.on('screen-share-stopped', ({ producerId }) => {
+            log('Screen share stopped by another user:', producerId);
             updateStatus('Screen share stopped by another user: ' + producerId);
         });
     </script>

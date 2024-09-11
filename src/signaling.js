@@ -11,8 +11,8 @@ class SignalingHandler {
       socket.on('create-producer-transport', (roomId, callback) => this.handleCreateProducerTransport(socket, roomId, callback));
       socket.on('connect-producer-transport', (roomId, transportId, dtlsParameters, callback) => 
           this.handleConnectProducerTransport(socket, roomId, transportId, dtlsParameters, callback));
-      socket.on('produce', (roomId, producerId, transportId, kind, rtpParameters, callback) => 
-          this.handleProduce(socket, roomId, producerId, transportId, kind, rtpParameters, callback));
+      socket.on('produce', (roomId, transportId, kind, rtpParameters, callback) => 
+          this.handleProduce(socket, roomId, transportId, kind, rtpParameters, callback));
       socket.on('consume', (roomId, consumerId, producerId, rtpCapabilities, callback) => 
           this.handleConsume(socket, roomId, consumerId, producerId, rtpCapabilities, callback));
       socket.on('start-screen-share', (roomId, producerId) => 
@@ -35,45 +35,38 @@ class SignalingHandler {
   }
 
   async handleCreateProducerTransport(socket, roomId, callback) {
+      try {
+          const { transport, params } = await this.mediasoupManager.createWebRtcTransport(roomId);
+          callback({ params: { ...params, id: transport.id } });
+      } catch (err) {
+          console.error('Error in handleCreateProducerTransport:', err);
+          callback({ error: err.message });
+      }
+  }
+  async handleConnectProducerTransport(socket, roomId, transportId, dtlsParameters, callback) {
     try {
-        const { transport, params } = await this.mediasoupManager.createWebRtcTransport(roomId);
-        callback({ params: { ...params, id: transport.id } });
+        await this.mediasoupManager.connectTransport(roomId, transportId, dtlsParameters);
+        callback({ success: true });
     } catch (err) {
-        console.error('Error in handleCreateProducerTransport:', err);
-        callback({ error: err.message });
+        console.error('Error in handleConnectProducerTransport:', err);
+        if (typeof callback === 'function') {
+            callback({ error: err.message });
+        } else {
+            socket.emit('connect-producer-transport-error', { error: err.message });
+        }
     }
 }
 
-async handleConnectProducerTransport(socket, roomId, transportId, { dtlsParameters }, callback) {
-  try {
-      await this.mediasoupManager.connectTransport(roomId, transportId, dtlsParameters);
-      const transport = this.mediasoupManager.getTransport(roomId, transportId);
-      callback({ success: true });
-  } catch (err) {
-      console.error('Error in handleConnectProducerTransport:', err);
-      if (typeof callback === 'function') {
-          callback({ error: err.message });
-      } else {
-          socket.emit('connect-producer-transport-error', { error: err.message });
+  async handleProduce(socket, roomId, transportId, kind, rtpParameters, callback) {
+      try {
+          const { id } = await this.mediasoupManager.produce(roomId, transportId, kind, rtpParameters);
+          callback({ id });
+          socket.to(roomId).emit('new-producer', { producerId: id });
+      } catch (error) {
+          console.error('Produce error:', error);
+          callback({ error: error.message });
       }
   }
-}
-  async handleProduce(socket, roomId, producerId, transportId, kind, rtpParameters, callback) {
-    try {
-        const { id } = await this.mediasoupManager.produce(roomId, producerId, transportId, kind, rtpParameters);
-        if (typeof callback === 'function') {
-            callback({ id });
-        }
-        socket.to(roomId).emit('new-producer', { producerId, id });
-    } catch (error) {
-        console.error('Produce error:', error);
-        if (typeof callback === 'function') {
-            callback({ error: error.message });
-        } else {
-            socket.emit('produce-error', { error: error.message });
-        }
-    }
-}
 
   async handleConsume(socket, roomId, consumerId, producerId, rtpCapabilities, callback) {
       try {
