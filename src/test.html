@@ -1,125 +1,135 @@
 <!DOCTYPE html>
-<html lang="ko">
+<html lang="en">
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>화면 공유 (로컬 테스트)</title>
+    <title>Study Room Screen Sharing</title>
+    <script src="/socket.io/socket.io.js"></script>
+    <script src="https://cdn.socket.io/4.0.1/socket.io.min.js"></script>
     <style>
-        video {
-            width: 100%;
-            max-width: 600px;
-            border: 2px solid #ccc;
-            margin-bottom: 10px;
-        }
+        body { font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px; }
+        button { margin-top: 10px; }
+        #status { margin-top: 20px; }
     </style>
 </head>
 <body>
-    <h1>화면 공유 (로컬 테스트)</h1>
-    <button id="startShare">화면 공유 시작</button>
-    <video id="localVideo" autoplay muted></video>
-    <div id="remoteVideos"></div>
-
-    <script src="https://cdnjs.cloudflare.com/ajax/libs/sockjs-client/1.5.1/sockjs.min.js"></script>
-    <script src="https://unpkg.com/mediasoup-client@3.6.30/lib/mediasoup-client.min.js"></script>
+    <h1>Study Room Screen Sharing</h1>
+    <input type="text" id="roomId" placeholder="Enter Study Room Number">
+    <button id="joinRoom">Join Room</button>
+    <button id="startScreen" disabled>Start Screen Share</button>
+    <button id="stopScreen" disabled>Stop Screen Share</button>
+    <div id="status"></div>
 
     <script>
-        // MediasoupClient가 전역 객체로 노출되지 않을 경우를 대비한 폴백
-        const MediasoupClient = window.MediasoupClient || window.mediasoupClient;
+        let producerTransport;
+        let screenProducer;
+        let currentRoom;
 
-        // 로컬 테스트를 위해 SockJS 대신 더미 소켓 사용
-        const socket = {
-            send: (message) => console.log('Sent:', JSON.parse(message)),
-            onmessage: null
-        };
+        const joinRoomBtn = document.getElementById('joinRoom');
+        const startScreenBtn = document.getElementById('startScreen');
+        const stopScreenBtn = document.getElementById('stopScreen');
+        const roomIdInput = document.getElementById('roomId');
+        const statusDiv = document.getElementById('status');
 
-        let device;
-        let transport;
-        let producer;
+        const socket = io('https://localhost:3000', {
+            withCredentials: true,
+            transports: ['websocket']
+        });
 
-        async function initializeDevice() {
-            try {
-                device = new MediasoupClient.Device();
-                // 로컬 테스트를 위한 더미 RTP Capabilities
-                const dummyRtpCapabilities = {
-                    codecs: [
-                        {
-                            kind: 'video',
-                            mimeType: 'video/VP8',
-                            clockRate: 90000,
-                            parameters: {},
-                            rtcpFeedback: []
-                        }
-                    ],
-                    headerExtensions: []
-                };
-                await device.load({ routerRtpCapabilities: dummyRtpCapabilities });
-                console.log('Device initialized successfully');
-            } catch (error) {
-                console.error('Error initializing device:', error);
+        socket.on('connect', () => {
+            console.log('Connected to server');
+            updateStatus('Connected to server');
+        });
+
+        socket.on('connect_error', (error) => {
+            console.error('Connection error:', error);
+            updateStatus('Connection error: ' + error.message);
+        });
+
+        joinRoomBtn.addEventListener('click', () => {
+            const roomId = roomIdInput.value.trim();
+            if (roomId) {
+                currentRoom = roomId;
+                socket.emit('join-room', roomId, 'user-' + Math.random().toString(36).substr(2, 9));
+                updateStatus('Joining room: ' + roomId);
+            } else {
+                updateStatus('Please enter a room number');
             }
-        }
+        });
 
-        async function createTransport() {
-            try {
-                // 로컬 테스트를 위한 더미 transport 옵션
-                const dummyTransportOptions = {
-                    id: 'dummy-transport-id',
-                    iceParameters: {
-                        usernameFragment: 'dummy',
-                        password: 'dummy',
-                        iceLite: true
-                    },
-                    iceCandidates: [],
-                    dtlsParameters: {
-                        role: 'auto',
-                        fingerprints: [
-                            {
-                                algorithm: 'sha-256',
-                                value: 'dummy:fingerprint:value'
-                            }
-                        ]
+        socket.on('get-rtp-capabilities', async (routerRtpCapabilities) => {
+            updateStatus('Joined room successfully');
+            await createProducerTransport();
+            startScreenBtn.disabled = false;
+        });
+
+        async function createProducerTransport() {
+            socket.emit('create-producer-transport', currentRoom, (response) => {
+                if (response.error) {
+                    updateStatus('Error creating producer transport: ' + response.error);
+                    return;
+                }
+                producerTransport = new RTCPeerConnection(response.params);
+                producerTransport.onicecandidate = ({ candidate }) => {
+                    if (candidate) {
+                        socket.emit('ice-candidate', { candidate });
                     }
                 };
-                transport = device.createSendTransport(dummyTransportOptions);
-
-                transport.on('connect', async ({ dtlsParameters }, callback, errback) => {
-                    console.log('Transport connect event', dtlsParameters);
-                    callback();
-                });
-
-                transport.on('produce', async ({ kind, rtpParameters }, callback, errback) => {
-                    console.log('Transport produce event', { kind, rtpParameters });
-                    callback({ id: 'dummy-producer-id' });
-                });
-
-                console.log('Transport created successfully');
-            } catch (error) {
-                console.error('Error creating transport:', error);
-            }
+                updateStatus('Producer transport created');
+            });
         }
 
-        async function startScreenShare() {
+        startScreenBtn.addEventListener('click', async () => {
             try {
                 const stream = await navigator.mediaDevices.getDisplayMedia({ video: true });
-                const videoTrack = stream.getVideoTracks()[0];
-                producer = await transport.produce({ track: videoTrack });
+                const track = stream.getVideoTracks()[0];
+                screenProducer = await producerTransport.addTrack(track, stream);
+                socket.emit('produce', currentRoom, 'screen-producer', 'video', screenProducer.getParameters(), (response) => {
+                    if (response.error) {
+                        updateStatus('Error starting screen share: ' + response.error);
+                        return;
+                    }
+                    socket.emit('start-screen-share', currentRoom, response.id);
+                    updateStatus('Screen sharing started');
+                    startScreenBtn.disabled = true;
+                    stopScreenBtn.disabled = false;
+                });
 
-                const localVideo = document.getElementById('localVideo');
-                localVideo.srcObject = stream;
-                console.log('Screen sharing started successfully');
+                track.onended = () => {
+                    stopScreenShare();
+                };
             } catch (error) {
-                console.error('Error starting screen share:', error);
+                updateStatus('Error accessing screen: ' + error.message);
+            }
+        });
+
+        stopScreenBtn.addEventListener('click', stopScreenShare);
+
+        function stopScreenShare() {
+            if (screenProducer) {
+                socket.emit('stop-screen-share', currentRoom, screenProducer.id);
+                screenProducer.track.stop();
+                screenProducer = null;
+                updateStatus('Screen sharing stopped');
+                startScreenBtn.disabled = false;
+                stopScreenBtn.disabled = true;
             }
         }
 
-        document.getElementById('startShare').addEventListener('click', async () => {
-            try {
-                await initializeDevice();
-                await createTransport();
-                await startScreenShare();
-            } catch (error) {
-                console.error('Error in screen sharing process:', error);
+        function updateStatus(message) {
+            const statusDiv = document.getElementById('status');
+            if (statusDiv) {
+                statusDiv.innerHTML += `<p>${message}</p>`;
             }
+            console.log(message);
+        }
+
+        socket.on('screen-share-started', ({ producerId }) => {
+            updateStatus('Screen share started by another user: ' + producerId);
+        });
+
+        socket.on('screen-share-stopped', ({ producerId }) => {
+            updateStatus('Screen share stopped by another user: ' + producerId);
         });
     </script>
 </body>
