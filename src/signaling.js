@@ -44,8 +44,11 @@ class SignalingHandler {
       }
   }
   async handleConnectProducerTransport(socket, roomId, transportId, dtlsParameters, callback) {
+    console.error(`Attempting to connect producer transport. Room: ${roomId}, Transport: ${transportId}`);
+    console.error('Received DTLS parameters:', dtlsParameters);
     try {
         await this.mediasoupManager.connectTransport(roomId, transportId, dtlsParameters);
+        console.error('Producer transport connected successfully');
         callback({ success: true });
     } catch (err) {
         console.error('Error in handleConnectProducerTransport:', err);
