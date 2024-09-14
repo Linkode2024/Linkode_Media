@@ -1053,6 +1053,61 @@ function plural(ms, msAbs, n, name) {
 
 /***/ }),
 
+/***/ "./config.js":
+/*!*******************!*\
+  !*** ./config.js ***!
+  \*******************/
+/***/ ((module) => {
+
+module.exports = {
+  listenIp: '0.0.0.0',
+  listenPort: 3000,
+  sslKey: '/Users/munhyeonjun/Desktop/mediasoup-sample-app/config/_wildcard.exampel.dev+3-key.pem',
+  sslCrt: '/Users/munhyeonjun/Desktop/mediasoup-sample-app/config/_wildcard.exampel.dev+3.pem',
+  mediasoup: {
+    // Worker settings
+    worker: {
+      rtcMinPort: 10000,
+      rtcMaxPort: 10100,
+      logLevel: 'warn',
+      logTags: ['info', 'ice', 'dtls', 'rtp', 'srtp', 'rtcp'
+      // 'rtx',
+      // 'bwe',
+      // 'score',
+      // 'simulcast',
+      // 'svc'
+      ]
+    },
+    // Router settings
+    router: {
+      mediaCodecs: [{
+        kind: 'audio',
+        mimeType: 'audio/opus',
+        clockRate: 48000,
+        channels: 2
+      }, {
+        kind: 'video',
+        mimeType: 'video/VP8',
+        clockRate: 90000,
+        parameters: {
+          'x-google-start-bitrate': 1000
+        }
+      }]
+    },
+    // WebRtcTransport settings
+    webRtcTransport: {
+      listenIps: [{
+        ip: '127.0.0.1',
+        announcedIp: null
+      }],
+      maxIncomingBitrate: 1500000,
+      initialAvailableOutgoingBitrate: 1000000
+    }
+  }
+};
+
+/***/ }),
+
 /***/ "./lib/socket.io-promise.js":
 /*!**********************************!*\
   !*** ./lib/socket.io-promise.js ***!
@@ -25434,7 +25489,7 @@ function _asyncToGenerator(n) { return function () { var t = this, e = arguments
 var mediasoup = __webpack_require__(/*! mediasoup-client */ "./node_modules/mediasoup-client/lib/index.js");
 var socketClient = __webpack_require__(/*! socket.io-client */ "./node_modules/socket.io-client/lib/index.js");
 var socketPromise = (__webpack_require__(/*! ./lib/socket.io-promise */ "./lib/socket.io-promise.js").promise);
-var config = __webpack_require__(Object(function webpackMissingModule() { var e = new Error("Cannot find module './config'"); e.code = 'MODULE_NOT_FOUND'; throw e; }()));
+var config = __webpack_require__(/*! ./config */ "./config.js");
 var hostname = window.location.hostname;
 var device;
 var socket;

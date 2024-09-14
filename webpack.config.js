@@ -21,5 +21,10 @@ module.exports = {
       },
     ],
   },
+  resolve: {
+    alias: {
+      config: path.resolve(__dirname, 'config.js'),
+    },
+  },
   devtool: 'source-map',
 };
