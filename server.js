@@ -30,46 +30,65 @@ const roomManager = new RoomManager();
 })();
 
 async function runExpressApp() {
-  expressApp = express();
-  expressApp.use(cors());
-  expressApp.use(express.json());
-  expressApp.use(express.static(__dirname));
+    expressApp = express();
+    expressApp.use(cors());
+    expressApp.use(express.json());
+    expressApp.use(express.static(__dirname));
 
-  // API routes
-  expressApp.post('/api/joinRoom', (req, res) => {
-    const { studyroomId, memberId, isHarmfulAppDetected } = req.body;
-    try {
-      roomManager.joinRoom(studyroomId, memberId, isHarmfulAppDetected);
-      res.json({ success: true, message: 'Joined room successfully' });
-    } catch (error) {
-      res.status(400).json({ success: false, message: error.message });
-    }
-  });
+    // API routes
+    expressApp.post('/api/joinRoom', (req, res) => {
+        const { studyroomId, memberId, isHarmfulAppDetected } = req.body;
+        try {
+        roomManager.joinRoom(studyroomId, memberId, isHarmfulAppDetected);
+        res.json({ success: true, message: 'Joined room successfully' });
+        } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+        }
+    });
 
-  expressApp.post('/api/leaveRoom', (req, res) => {
-    const { studyroomId, memberId } = req.body;
-    try {
-      roomManager.leaveRoom(studyroomId, memberId);
-      res.json({ success: true, message: 'Left room successfully' });
-    } catch (error) {
-      res.status(400).json({ success: false, message: error.message });
-    }
-  });
+    expressApp.post('/api/leaveRoom', (req, res) => {
+        const { studyroomId, memberId } = req.body;
+        try {
+        roomManager.leaveRoom(studyroomId, memberId);
+        res.json({ success: true, message: 'Left room successfully' });
+        } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+        }
+    });
 
-  expressApp.get('/api/roomMembers/:studyroomId', (req, res) => {
-    const { studyroomId } = req.params;
-    const members = roomManager.getRoomMembers(studyroomId);
-    res.json({ success: true, members });
-  });
+    expressApp.get('/api/roomMembers/:studyroomId', (req, res) => {
+        const { studyroomId } = req.params;
+        const members = roomManager.getRoomMembers(studyroomId);
+        res.json({ success: true, members });
+    });
 
-  expressApp.post('/api/updateMemberStatus', (req, res) => {
-    const { studyroomId, memberId, isHarmfulAppDetected } = req.body;
-    try {
-      roomManager.updateMemberStatus(studyroomId, memberId, isHarmfulAppDetected);
-      res.json({ success: true, message: 'Member status updated successfully' });
-    } catch (error) {
-      res.status(400).json({ success: false, message: error.message });
-    }
+    expressApp.post('/api/updateMemberStatus', (req, res) => {
+        const { studyroomId, memberId, isHarmfulAppDetected } = req.body;
+        try {
+        roomManager.updateMemberStatus(studyroomId, memberId, isHarmfulAppDetected);
+        res.json({ success: true, message: 'Member status updated successfully' });
+        } catch (error) {
+        res.status(400).json({ success: false, message: error.message });
+        }
+
+    expressApp.get('/api/roomDetails/:studyroomId', (req, res) => {
+        const { studyroomId } = req.params;
+        const room = roomManager.getRoom(studyroomId);
+        if (!room) {
+          return res.status(404).json({ error: 'Room not found' });
+        }
+        
+        const members = room.getMembers();
+        const screenSharing = members.filter(memberId => 
+          room.getMemberStatus(memberId).isHarmfulAppDetected
+        );
+    
+        res.json({
+          studyroomId,
+          members,
+          screenSharing
+        });
+      });
   });
 
   expressApp.get('/api/rooms', (req, res) => {
@@ -128,7 +147,6 @@ async function runSocketServer() {
 
     socket.on('disconnect', () => {
       console.log('client disconnected');
-      // Leave the room when disconnected
       leaveRoom(socket);
     });
 
@@ -136,29 +154,51 @@ async function runSocketServer() {
       console.error('client connection error', err);
     });
 
-    socket.on('joinRoom', async ({ roomName, memberId, isHarmfulAppDetected }, callback) => {
-      console.log('Client attempting to join room:', roomName);
+    socket.on('joinRoom', async ({ studyroomId, memberId, isHarmfulAppDetected }, callback) => {
+      console.log('Client attempting to join room:', studyroomId);
       try {
-        const room = await joinRoom(socket, roomName, memberId, isHarmfulAppDetected);
-        console.log('Client joined room successfully:', roomName);
+        const room = await joinRoom(socket, studyroomId, memberId, isHarmfulAppDetected);
+        console.log('Client joined room successfully:', studyroomId);
         callback({ 
           success: true, 
           message: 'Joined room successfully',
           rtpCapabilities: room.router.rtpCapabilities
         });
+        
+        // Notify other members about the new user
+        socket.to(studyroomId).emit('newUser', { memberId, isHarmfulAppDetected });
+
+        // If the new user has harmful app detected, notify others to consume their stream
+        if (isHarmfulAppDetected) {
+          socket.to(studyroomId).emit('newProducer', { memberId });
+        }
       } catch (error) {
-        console.error('Error joining room:', roomName, error);
+        console.error('Error joining room:', studyroomId, error);
         callback({ success: false, message: error.message });
       }
     });
 
-    socket.on('updateStatus', ({ isHarmfulAppDetected }, callback) => {
+    socket.on('updateStatus', async ({ isHarmfulAppDetected }, callback) => {
       if (!socket.room || !socket.memberId) {
         callback({ success: false, message: 'Not in a room' });
         return;
       }
+      
+      const previousStatus = roomManager.getRoom(socket.room).getMemberStatus(socket.memberId);
       roomManager.updateMemberStatus(socket.room, socket.memberId, isHarmfulAppDetected);
-      socket.to(socket.room).emit('memberStatusUpdated', socket.memberId, isHarmfulAppDetected);
+      
+      // Notify all users in the room about the status change
+      socketServer.to(socket.room).emit('memberStatusUpdated', { memberId: socket.memberId, isHarmfulAppDetected });
+      
+      // Handle screen sharing based on status change
+      if (!previousStatus.isHarmfulAppDetected && isHarmfulAppDetected) {
+        // Start screen sharing
+        socket.to(socket.room).emit('newProducer', { memberId: socket.memberId });
+      } else if (previousStatus.isHarmfulAppDetected && !isHarmfulAppDetected) {
+        // Stop screen sharing
+        socket.to(socket.room).emit('producerClosed', { memberId: socket.memberId });
+      }
+      
       callback({ success: true });
     });
 
@@ -219,6 +259,11 @@ async function runSocketServer() {
     });
 
     socket.on('produce', async (data, callback) => {
+      if (!roomManager.getRoom(socket.room).getMemberStatus(socket.memberId).isHarmfulAppDetected) {
+        callback({ error: 'Not allowed to produce' });
+        return;
+      }
+
       const {kind, rtpParameters} = data;
       const producer = await socket.producerTransport.produce({ kind, rtpParameters });
       const room = roomManager.getRoom(socket.room);
@@ -227,7 +272,7 @@ async function runSocketServer() {
       callback({ id: producer.id });
 
       // inform other members in the room about new producer
-      socket.to(socket.room).emit('newProducer');
+      socket.to(socket.room).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
     });
 
     socket.on('consume', async (data, callback) => {
@@ -280,113 +325,116 @@ async function runSocketServer() {
 }
 
 async function runMediasoupWorker() {
-  worker = await mediasoup.createWorker({
-    logLevel: config.mediasoup.worker.logLevel,
-    logTags: config.mediasoup.worker.logTags,
-    rtcMinPort: config.mediasoup.worker.rtcMinPort,
-    rtcMaxPort: config.mediasoup.worker.rtcMaxPort,
-  });
+    worker = await mediasoup.createWorker({
+        logLevel: config.mediasoup.worker.logLevel,
+        logTags: config.mediasoup.worker.logTags,
+        rtcMinPort: config.mediasoup.worker.rtcMinPort,
+        rtcMaxPort: config.mediasoup.worker.rtcMaxPort,
+    });
 
-  worker.on('died', () => {
-    console.error('mediasoup worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
-    setTimeout(() => process.exit(1), 2000);
-  });
+    worker.on('died', () => {
+        console.error('mediasoup worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
+        setTimeout(() => process.exit(1), 2000);
+    });
 }
 
 async function createWebRtcTransport(router) {
-  const {
-    maxIncomingBitrate,
-    initialAvailableOutgoingBitrate
-  } = config.mediasoup.webRtcTransport;
+    const {
+        maxIncomingBitrate,
+        initialAvailableOutgoingBitrate
+    } = config.mediasoup.webRtcTransport;
 
-  const transport = await router.createWebRtcTransport({
-    listenIps: config.mediasoup.webRtcTransport.listenIps,
-    enableUdp: true,
-    enableTcp: true,
-    preferUdp: true,
-    initialAvailableOutgoingBitrate,
-  });
-  if (maxIncomingBitrate) {
-    try {
-      await transport.setMaxIncomingBitrate(maxIncomingBitrate);
-    } catch (error) {
-      console.error('Error setting max incoming bitrate:', error);
+    const transport = await router.createWebRtcTransport({
+        listenIps: config.mediasoup.webRtcTransport.listenIps,
+        enableUdp: true,
+        enableTcp: true,
+        preferUdp: true,
+        initialAvailableOutgoingBitrate,
+    });
+    if (maxIncomingBitrate) {
+        try {
+        await transport.setMaxIncomingBitrate(maxIncomingBitrate);
+        } catch (error) {
+        console.error('Error setting max incoming bitrate:', error);
+        }
     }
-  }
-  return {
-    transport,
-    params: {
-      id: transport.id,
-      iceParameters: transport.iceParameters,
-      iceCandidates: transport.iceCandidates,
-      dtlsParameters: transport.dtlsParameters
-    },
-  };
+    return {
+        transport,
+        params: {
+        id: transport.id,
+        iceParameters: transport.iceParameters,
+        iceCandidates: transport.iceCandidates,
+        dtlsParameters: transport.dtlsParameters
+        },
+    };
 }
 
-async function joinRoom(socket, roomName, memberId, isHarmfulAppDetected) {
-  // Leave current room if any
-  if (socket.room) {
-    await leaveRoom(socket);
-  }
+async function joinRoom(socket, studyroomId, memberId, isHarmfulAppDetected) {
+    // Leave current room if any
+    if (socket.room) {
+        await leaveRoom(socket);
+    }
 
-  console.log('User joined room', roomName);
-  
-  let room = roomManager.getRoom(roomName);
-  if (!room) {
-    // Create a new room
-    room = roomManager.createRoom(roomName);
-    room.router = await worker.createRouter({ mediaCodecs: config.mediasoup.router.mediaCodecs });
-    room.producers = new Map();
-    room.consumers = new Map();
-  }
+    console.log('User joined room', studyroomId);
+    
+    let room = roomManager.getRoom(studyroomId);
+    if (!room) {
+        // Create a new room
+        room = roomManager.createRoom(studyroomId);
+        room.router = await worker.createRouter({ mediaCodecs: config.mediasoup.router.mediaCodecs });
+        room.producers = new Map();
+        room.consumers = new Map();
+    }
 
-  roomManager.joinRoom(roomName, memberId, isHarmfulAppDetected);
-  socket.room = roomName;
-  socket.memberId = memberId;
-  socket.join(roomName);
+    roomManager.joinRoom(studyroomId, memberId, isHarmfulAppDetected);
+    socket.room = studyroomId;
+    socket.memberId = memberId;
+    socket.join(studyroomId);
 
-  // Notify other users in the room
-  socket.to(roomName).emit('userJoined', memberId);
+    // Notify other users in the room
+    socket.to(studyroomId).emit('userJoined', { memberId, isHarmfulAppDetected });
 
-  // Send list of existing producers to the new participant
-  const producerList = Array.from(room.producers.keys());
-  socket.emit('producerList', producerList);
+    // Send list of existing producers to the new participant
+    const producerList = Array.from(room.producers.entries()).map(([producerId, producer]) => ({
+        producerId,
+        memberId: producer.appData.memberId
+    }));
+    socket.emit('producerList', producerList);
 
-  return room;
+    return room;
 }
 
 async function leaveRoom(socket) {
-  if (!socket.room) return;
-
-  console.log('User left room', socket.room);
-
-  // Close transports
-  if (socket.producerTransport) {
-    socket.producerTransport.close();
-  }
-  if (socket.consumerTransport) {
-    socket.consumerTransport.close();
-  }
-
-  const room = roomManager.getRoom(socket.room);
+    if (!socket.room) return;
   
-  if (room) {
-    // Remove all producers and consumers
-    room.producers.forEach(producer => {
-      if (producer.socketId === socket.id) {
-        producer.close();
-        room.producers.delete(producer.id);
-      }
+    console.log('User left room', socket.room);
+  
+    // Close transports
+    if (socket.producerTransport) {
+      socket.producerTransport.close();
+    }
+    if (socket.consumerTransport) {
+      socket.consumerTransport.close();
+    }
+  
+    const room = roomManager.getRoom(socket.room);
+    
+    if (room) {
+        // Remove all producers and consumers
+        room.producers.forEach(producer => {
+        if (producer.appData.socketId === socket.id) {
+            producer.close();
+            room.producers.delete(producer.id);
+        }
+        });
+  
+        room.consumers.forEach(consumer => {
+        if (consumer.appData.socketId === socket.id) {
+            consumer.close();
+            room.consumers.delete(consumer.id);
+        }
     });
-
-    room.consumers.forEach(consumer => {
-      if (consumer.socketId === socket.id) {
-        consumer.close();
-        room.consumers.delete(consumer.id);
-      }
-    });
-
+  
     // Notify other users in the room
     socket.to(socket.room).emit('userLeft', socket.memberId);
 
@@ -396,17 +444,17 @@ async function leaveRoom(socket) {
 
     // Remove the room if it's empty
     if (roomManager.getRoomMembers(socket.room).length === 0) {
-      roomManager.removeRoom(socket.room);
+    roomManager.removeRoom(socket.room);
     }
-  }
-
-  socket.room = null;
-  socket.memberId = null;
 }
-
+  
+    socket.room = null;
+    socket.memberId = null;
+}
+  
 module.exports = {
-  runExpressApp,
-  runWebServer,
-  runSocketServer,
-  runMediasoupWorker
+runExpressApp,
+runWebServer,
+runSocketServer,
+runMediasoupWorker
 };
