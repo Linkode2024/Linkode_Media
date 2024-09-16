@@ -44,7 +44,7 @@
       </td>
       <td>
         <div>Remote</div>
-        <video id="remote_video" controls autoplay playsinline></video>
+        <div id="remote_videos"></div>
       </td>
     </tr>
   </table>
@@ -57,6 +57,17 @@
           <div><button id="btn_connect">Connect</button> <span id="connection_status"></span></div>
         </fieldset>
       </td>
+      <td>
+        <fieldset id="fs_room">
+          <legend>Room</legend>
+          <div>
+            <input type="text" id="room_name" placeholder="Enter room name">
+            <button id="btn_join_room" disabled>Join Room</button>          
+          </div>
+        </fieldset>
+      </td>
+    </tr>
+    <tr>
       <td>
         <fieldset id="fs_publish" disabled>
           <legend>Publishing</legend>
@@ -81,7 +92,6 @@
   </table>
 </body>
 <script>
-  // window.localStorage.setItem('debug', 'mediasoup-client:WARN* mediasoup-client:ERROR*');
   window.localStorage.setItem('debug', 'mediasoup-client:*');
 </script>
 <script type="text/javascript" src="dist/app-bundle.js"></script>
