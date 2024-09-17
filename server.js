@@ -138,7 +138,7 @@ async function runWebServer() {
 async function runSocketServer() {
     socketServer = socketIO(webServer, {
         serveClient: false,
-        path: '/server',
+        path: '/socket.io',
         log: false,
     });
 
