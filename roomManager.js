@@ -6,34 +6,41 @@ class Room {
         this.members = new Map();
     }
 
-    addMember(memberId, isHarmfulAppDetected) {
-        this.members.set(memberId, { isHarmfulAppDetected });
+    addMember(memberId, appInfo) {
+        this.members.set(memberId, { appInfo });
     }
 
     removeMember(memberId) {
         this.members.delete(memberId);
     }
 
-    updateMemberStatus(memberId, isHarmfulAppDetected) {
+    updateMemberAppUsage(memberId, appInfo) {
         if (this.members.has(memberId)) {
-        this.members.get(memberId).isHarmfulAppDetected = isHarmfulAppDetected;
+            this.members.get(memberId).appInfo = appInfo;
         }
     }
 
-    getMemberStatus(memberId) {
-        return this.members.get(memberId);
+    getMemberAppUsage(memberId) {
+        return this.members.get(memberId)?.appInfo;
     }
 
     getMembers() {
         return Array.from(this.members.keys());
     }
 
+    getMembersWithAppUsage() {
+        return Array.from(this.members.entries()).map(([memberId, data]) => ({
+            memberId,
+            appInfo: data.appInfo
+        }));
+    }
+
     isEmpty() {
         return this.members.size === 0;
     }
-    }
+}
 
-    class RoomManager extends EventEmitter {
+class RoomManager extends EventEmitter {
     constructor() {
         super();
         this.rooms = new Map();
@@ -41,9 +48,9 @@ class Room {
 
     createRoom(studyroomId) {
         if (!this.rooms.has(studyroomId)) {
-        const room = new Room(studyroomId);
-        this.rooms.set(studyroomId, room);
-        this.emit('roomCreated', studyroomId);
+            const room = new Room(studyroomId);
+            this.rooms.set(studyroomId, room);
+            this.emit('roomCreated', studyroomId);
         }
         return this.rooms.get(studyroomId);
     }
@@ -55,44 +62,49 @@ class Room {
     removeRoom(studyroomId) {
         const room = this.rooms.get(studyroomId);
         if (room && room.isEmpty()) {
-        this.rooms.delete(studyroomId);
-        this.emit('roomRemoved', studyroomId);
-        return true;
+            this.rooms.delete(studyroomId);
+            this.emit('roomRemoved', studyroomId);
+            return true;
         }
         return false;
     }
 
-    joinRoom(studyroomId, memberId, isHarmfulAppDetected) {
+    joinRoom(studyroomId, memberId, appInfo) {
         let room = this.getRoom(studyroomId);
         if (!room) {
-        room = this.createRoom(studyroomId);
+            room = this.createRoom(studyroomId);
         }
-        room.addMember(memberId, isHarmfulAppDetected);
-        this.emit('memberJoined', studyroomId, memberId, isHarmfulAppDetected);
+        room.addMember(memberId, appInfo);
+        this.emit('memberJoined', studyroomId, memberId, appInfo);
     }
 
     leaveRoom(studyroomId, memberId) {
         const room = this.getRoom(studyroomId);
         if (room) {
-        room.removeMember(memberId);
-        this.emit('memberLeft', studyroomId, memberId);
-        if (room.isEmpty()) {
-            this.removeRoom(studyroomId);
-        }
+            room.removeMember(memberId);
+            this.emit('memberLeft', studyroomId, memberId);
+            if (room.isEmpty()) {
+                this.removeRoom(studyroomId);
+            }
         }
     }
 
-    updateMemberStatus(studyroomId, memberId, isHarmfulAppDetected) {
+    updateMemberAppUsage(studyroomId, memberId, appInfo) {
         const room = this.getRoom(studyroomId);
         if (room) {
-        room.updateMemberStatus(memberId, isHarmfulAppDetected);
-        this.emit('memberStatusUpdated', studyroomId, memberId, isHarmfulAppDetected);
+            room.updateMemberAppUsage(memberId, appInfo);
+            this.emit('memberAppUsageUpdated', studyroomId, memberId, appInfo);
         }
     }
 
     getRoomMembers(studyroomId) {
         const room = this.getRoom(studyroomId);
         return room ? room.getMembers() : [];
+    }
+
+    getRoomMembersWithAppUsage(studyroomId) {
+        const room = this.getRoom(studyroomId);
+        return room ? room.getMembersWithAppUsage() : [];
     }
 
     getAllRooms() {
