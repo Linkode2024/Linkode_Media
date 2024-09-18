@@ -7,7 +7,7 @@ class Room {
     }
 
     addMember(memberId, appInfo) {
-        this.members.set(memberId, { appInfo });
+        this.members.set(memberId, appInfo );
     }
 
     removeMember(memberId) {

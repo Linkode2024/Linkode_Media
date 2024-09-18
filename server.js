@@ -156,37 +156,36 @@ async function runSocketServer() {
 
         try {
             // Join room automatically upon connection
-            const room = await joinRoom(socket, studyroomId, memberId, JSON.parse(appInfo));
+            const room = await joinRoom(socket, studyroomId, memberId, appInfo);
 
-            // Get all current members and their app usage
-            const membersWithAppUsage = roomManager.getRoomMembersWithAppUsage(studyroomId);
-
-            // Send room information to the client
-            socket.emit('roomJoined', {
-                studyroomId,
-                members: membersWithAppUsage,
-                rtpCapabilities: room.router.rtpCapabilities
-            });
-
-            // Notify other members about the new user
-            socket.to(studyroomId).emit('newUser', { memberId, appInfo: JSON.parse(appInfo) });
-
-            // Broadcast updated room information to all members
-            socketServer.to(studyroomId).emit('roomUpdate', {
-                studyroomId,
-                members: membersWithAppUsage
-            });
-
-            // Set up event listeners for this socket
-            socket.on('disconnect', () => {
-                console.log('client disconnected');
-                leaveRoom(socket);
-                // Broadcast updated room information after user leaves
+            // Function to broadcast room update
+            const broadcastRoomUpdate = () => {
                 const updatedMembers = roomManager.getRoomMembersWithAppUsage(studyroomId);
+                console.log(`Broadcasting room update for room ${studyroomId}:`, updatedMembers);
                 socketServer.to(studyroomId).emit('roomUpdate', {
                     studyroomId,
                     members: updatedMembers
                 });
+            };
+
+            // Send initial room information to the client
+            socket.emit('roomJoined', {
+                studyroomId,
+                members: roomManager.getRoomMembersWithAppUsage(studyroomId),
+                rtpCapabilities: room.router.rtpCapabilities
+            });
+
+            // Notify other members about the new user
+            socket.to(studyroomId).emit('newUser', { memberId, appInfo });
+
+            // Broadcast updated room information to all members
+            broadcastRoomUpdate();
+
+            // Set up event listeners for this socket
+            socket.on('disconnect', () => {
+                console.log(`Client disconnected: ${memberId} from room ${studyroomId}`);
+                leaveRoom(socket);
+                broadcastRoomUpdate();
             });
 
             socket.on('updateAppUsage', ({ appInfo }) => {
@@ -195,15 +194,12 @@ async function runSocketServer() {
                 }
                 
                 try {
+                    console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${appInfo}`);
                     // Update app usage for the member
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
                     
                     // Broadcast the updated room information to all members in the room
-                    const updatedMembers = roomManager.getRoomMembersWithAppUsage(studyroomId);
-                    socketServer.to(socket.studyroomId).emit('roomUpdate', {
-                        studyroomId: socket.studyroomId,
-                        members: updatedMembers
-                    });
+                    broadcastRoomUpdate();
                 } catch (error) {
                     console.error('Error updating app usage:', error);
                     socket.emit('error', { message: 'Failed to update app usage' });
