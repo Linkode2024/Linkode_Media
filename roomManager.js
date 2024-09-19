@@ -7,7 +7,7 @@ class Room {
     }
 
     addMember(memberId, appInfo) {
-        this.members.set(memberId, appInfo );
+        this.members.set(memberId, {appInfo} );
     }
 
     removeMember(memberId) {
@@ -79,13 +79,18 @@ class RoomManager extends EventEmitter {
     }
 
     leaveRoom(studyroomId, memberId) {
+        console.log(`Attempting to remove member ${memberId} from room ${studyroomId}`);
         const room = this.getRoom(studyroomId);
         if (room) {
             room.removeMember(memberId);
+            console.log(`Member ${memberId} removed from room ${studyroomId}`);
             this.emit('memberLeft', studyroomId, memberId);
             if (room.isEmpty()) {
                 this.removeRoom(studyroomId);
+                console.log(`Room ${studyroomId} removed as it became empty`);
             }
+        } else {
+            console.log(`Room ${studyroomId} not found when trying to remove member ${memberId}`);
         }
     }
 

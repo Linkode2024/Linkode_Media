@@ -15,7 +15,6 @@ let socketServer;
 let expressApp;
 let mediasoupRouter;
 
-// Room management
 const roomManager = new RoomManager();
 
 (async () => {
@@ -155,10 +154,16 @@ async function runSocketServer() {
         }
 
         try {
-            // Join room automatically upon connection
-            const room = await joinRoom(socket, studyroomId, memberId, appInfo);
+            let parsedAppInfo;
+            try {
+                parsedAppInfo = JSON.parse(appInfo);
+            } catch (e) {
+                parsedAppInfo = appInfo;
+            }
+            // 커넥션하면 자동으로 스터디룸에 입장
+            const room = await joinRoom(socket, studyroomId, memberId, parsedAppInfo);
 
-            // Function to broadcast room update
+            // studyroom이 업데이트되면 브로드캐스트
             const broadcastRoomUpdate = () => {
                 const updatedMembers = roomManager.getRoomMembersWithAppUsage(studyroomId);
                 console.log(`Broadcasting room update for room ${studyroomId}:`, updatedMembers);
@@ -168,24 +173,26 @@ async function runSocketServer() {
                 });
             };
 
-            // Send initial room information to the client
+            // 스터디룸에 입장하면 해당 스터디룸의 정보 전송
             socket.emit('roomJoined', {
                 studyroomId,
                 members: roomManager.getRoomMembersWithAppUsage(studyroomId),
                 rtpCapabilities: room.router.rtpCapabilities
             });
 
-            // Notify other members about the new user
-            socket.to(studyroomId).emit('newUser', { memberId, appInfo });
+            // 새로운 유저가 들어오면 브로드캐스트
+            // socket.to(studyroomId).emit('newUser', { memberId, appappInfo: parsedAppInfo });
 
-            // Broadcast updated room information to all members
+            // 브로드캐스트
             broadcastRoomUpdate();
 
-            // Set up event listeners for this socket
+            // 소켓 연결 끊기
             socket.on('disconnect', () => {
-                console.log(`Client disconnected: ${memberId} from room ${studyroomId}`);
-                leaveRoom(socket);
-                broadcastRoomUpdate();
+                console.log(`Client disconnected: ${socket.memberId} from room ${socket.studyroomId}`);
+                if (socket.studyroomId && socket.memberId) {
+                    leaveRoom(socket);
+                    broadcastRoomUpdate();
+                }
             });
 
             socket.on('updateAppUsage', ({ appInfo }) => {
@@ -195,10 +202,7 @@ async function runSocketServer() {
                 
                 try {
                     console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${appInfo}`);
-                    // Update app usage for the member
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
-                    
-                    // Broadcast the updated room information to all members in the room
                     broadcastRoomUpdate();
                 } catch (error) {
                     console.error('Error updating app usage:', error);
@@ -209,6 +213,7 @@ async function runSocketServer() {
             socket.on('leaveRoom', async (callback) => {
                 try {
                     await leaveRoom(socket);
+                    broadcastRoomUpdate();
                     callback();
                 } catch (error) {
                     console.error('Error leaving room:', error);
@@ -410,7 +415,7 @@ async function createWebRtcTransport(router) {
 }
 
 async function joinRoom(socket, studyroomId, memberId, appInfo) {
-    console.log('User joined study room', studyroomId);
+    console.log(`User ${memberId} joined study room ${studyroomId} with app info:`, appInfo);
     
     let room = roomManager.getRoom(studyroomId);
     if (!room) {
@@ -430,11 +435,10 @@ async function joinRoom(socket, studyroomId, memberId, appInfo) {
 }
 
 async function leaveRoom(socket) {
-    if (!socket.room) return;
+    if (!socket.studyroomId || !socket.memberId) return;
   
-    console.log('User left study room', socket.studyroomId);
-  
-    // Close transports
+    console.log(`User ${socket.memberId} left study room ${socket.studyroomId}`);
+      
     if (socket.producerTransport) {
         socket.producerTransport.close();
     }
@@ -460,20 +464,15 @@ async function leaveRoom(socket) {
             }
         });
   
-    // Notify other users in the room
-    socket.to(socket.studyroomId).emit('userLeft', socket.memberId);
+        roomManager.leaveRoom(socket.studyroomId, socket.memberId);
+        socket.leave(socket.studyroomId);
 
-    // Leave the room
-    roomManager.leaveRoom(socket.studyroomId, socket.memberId);
-    socket.leave(socket.studyroomId);
-
-    // Remove the room if it's empty
-    if (roomManager.getRoomMembers(socket.studyroomId).length === 0) {
-        roomManager.removeRoom(socket.studyroomId);
+        if (roomManager.getRoomMembers(socket.studyroomId).length === 0) {
+            roomManager.removeRoom(socket.studyroomId);
+        }
     }
-}
   
-    socket.room = null;
+    socket.studyroomId = null;
     socket.memberId = null;
 }
   
