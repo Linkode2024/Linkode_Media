@@ -201,9 +201,18 @@ async function runSocketServer() {
                 }
                 
                 try {
-                    console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${appInfo}`);
+                    console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${JSON.stringify(appInfo)}`);
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
-                    broadcastRoomUpdate();
+                    
+                    // 룸의 모든 멤버에게 업데이트된 정보를 브로드캐스트
+                    const updatedMembers = roomManager.getRoomMembersWithAppUsage(socket.studyroomId);
+                    socketServer.to(socket.studyroomId).emit('roomUpdate', {
+                        studyroomId: socket.studyroomId,
+                        members: updatedMembers
+                    });
+                    
+                    // 업데이트 성공 메시지를 요청한 클라이언트에게 전송
+                    socket.emit('appUsageUpdated', { success: true });
                 } catch (error) {
                     console.error('Error updating app usage:', error);
                     socket.emit('error', { message: 'Failed to update app usage' });
