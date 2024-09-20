@@ -14,7 +14,7 @@ let webServer;
 let socketServer;
 let expressApp;
 let mediasoupRouter;
-
+let io;
 const roomManager = new RoomManager();
 
 (async () => {
@@ -106,6 +106,25 @@ async function runExpressApp() {
         next();
         }
     });
+
+    expressApp.post('/api/broadcast', (req, res) => {
+        const { studyroomId, memberId, event, data } = req.body;
+        console.log(`Broadcasting event: ${event} for studyroom: ${studyroomId}, member: ${memberId}`);
+        
+        if (!io) {
+            console.error('Socket.IO not initialized');
+            return res.status(500).send('Internal server error: Socket.IO not initialized');
+        }
+        
+        try {
+            io.to(studyroomId.toString()).emit(event, { memberId, response: data });
+            res.status(200).send('Broadcast successful');
+        } catch (error) {
+            console.error('Error broadcasting:', error);
+            res.status(500).send('Internal server error: ' + error.message);
+        }
+    });
+
 }
 
 async function runWebServer() {
@@ -141,7 +160,7 @@ async function runSocketServer() {
         path: '/socket.io',
         log: false,
     });
-
+    io = socketServer; 
     socketServer.on('connection', async (socket) => {
         console.log('client connected');
 
@@ -369,6 +388,20 @@ async function runSocketServer() {
                     callback({ error: 'Failed to resume consumer' });
                 }
             });
+
+            socket.on('fileUploaded', (data) => {
+                const { memberId, response } = data;
+                console.log(`Member ${memberId} uploaded a file:`, response);
+                // UI 업데이트 또는 알림 표시 로직 추가
+                alert(`Member ${memberId} uploaded a new file: ${response.dataName}`);
+            });
+            
+            socket.on('issueUploaded', (data) => {
+                const { memberId, response } = data;
+                console.log(`Member ${memberId} uploaded a issue:`, response);
+                // UI 업데이트 또는 알림 표시 로직 추가
+                alert(`Member ${memberId} uploaded a new issue: ${response.dataName}`);
+            }); 
     
         } catch (error) {
             console.error('Error in socket connection:', error);
@@ -489,5 +522,6 @@ module.exports = {
     runExpressApp,
     runWebServer,
     runSocketServer,
-    runMediasoupWorker
+    runMediasoupWorker,
+    io
 };
