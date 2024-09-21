@@ -160,6 +160,11 @@ async function runSocketServer() {
             } catch (e) {
                 parsedAppInfo = appInfo;
             }
+
+            socket.studyroomId = studyroomId;
+            socket.memberId = memberId;
+            socket.appInfo = parsedAppInfo;
+
             // 커넥션하면 자동으로 스터디룸에 입장
             const room = await joinRoom(socket, studyroomId, memberId, parsedAppInfo);
 
@@ -369,6 +374,39 @@ async function runSocketServer() {
                     callback({ error: 'Failed to resume consumer' });
                 }
             });
+
+            socket.on('sendAlarmToMember', (targetMemberId) => {
+                console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
+            
+                // 룸의 모든 소켓을 순회하여 targetMemberId를 가진 소켓을 찾습니다.
+                const roomSockets = socketServer.sockets.adapter.rooms.get(studyroomId);
+                if (roomSockets) {
+                    for (const socketId of roomSockets) {
+                        const targetSocket = socketServer.sockets.sockets.get(socketId);
+                        if (targetSocket && targetSocket.memberId === targetMemberId) {
+                            targetSocket.emit('receivedAlarm', {
+                                from: socket.memberId,
+                                to: targetMemberId
+                            });
+                            console.log(`Alarm sent to member ${targetMemberId} with socketId ${socketId}`);
+                            return;
+                        }
+                    }
+                }
+                console.log(`No socket found for memberId: ${targetMemberId}`);
+            });
+            
+            socket.on('sendAlarmToAllMembers', () => {
+                console.log(`Sending group alarm from ${socket.memberId} in room ${studyroomId}`);
+                
+                // 자신을 제외한 룸의 다른 모든 멤버에게 알람 전송
+                socket.to(studyroomId).emit('receivedGroupAlarm', {
+                    from: socket.memberId
+                });
+                
+                console.log(`Group alarm sent to all members in room ${studyroomId} except sender ${socket.memberId}`);
+            });
+        
     
         } catch (error) {
             console.error('Error in socket connection:', error);
