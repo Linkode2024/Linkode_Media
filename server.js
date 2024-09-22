@@ -8,7 +8,6 @@ const path = require('path');
 const cors = require('cors');
 const RoomManager = require('./roomManager');
 
-// Global variables
 let worker;
 let webServer;
 let socketServer;
@@ -34,6 +33,10 @@ async function runExpressApp() {
     expressApp.use(express.json());
     expressApp.use(express.static(__dirname));
 
+    expressApp.get('/test', (res,req)=>{
+        res.send('test success!');
+    })
+    
     /// API routes
     expressApp.post('/api/joinRoom', (req, res) => {
         const { studyroomId, memberId } = req.body;
@@ -231,6 +234,9 @@ async function runSocketServer() {
                     console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${JSON.stringify(appInfo)}`);
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
                     
+                    // appInfo 확인 -> 유해앱이어도 일단 브로드캐스트, 근데 유해앱이면 클라이언트로 warningHandler 같은 이벤트 리스너 만들어서 처리(화면공유하도록)
+                    
+
                     // 룸의 모든 멤버에게 업데이트된 정보를 브로드캐스트
                     const updatedMembers = roomManager.getRoomMembersWithAppUsage(socket.studyroomId);
                     socketServer.to(socket.studyroomId).emit('roomUpdate', {
