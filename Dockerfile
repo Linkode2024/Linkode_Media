@@ -1,10 +1,10 @@
 FROM node:20
 
 # 작업 디렉토리 설정
-WORKDIR /src
+WORKDIR /app
 
 # package.json 파일을 먼저 복사하고 npm install 실행
-COPY package.json /src/
+COPY package.json package-lock.json ./
 
 RUN \
     set -x \
@@ -13,10 +13,10 @@ RUN \
     && npm install
 
 # 나머지 파일 복사
-COPY . /src
+COPY . .
 
 # 포트 노출
 EXPOSE 9000
 
 # 앱 실행
-CMD ["node", "src/index.js"]
+CMD ["node", "server.js"]

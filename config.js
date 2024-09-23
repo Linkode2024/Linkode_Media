@@ -1,8 +1,8 @@
 module.exports = {
   listenIp: '0.0.0.0',
   listenPort: 3000,
-  sslKey: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3-key.pem',
-  sslCrt: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3.pem',
+  // sslKey: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3-key.pem',
+  // sslCrt: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3.pem',
   mediasoup: {
     // Worker settings
     worker: {
