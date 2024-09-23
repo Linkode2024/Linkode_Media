@@ -419,8 +419,7 @@ async function runSocketServer() {
                         const targetSocket = socketServer.sockets.sockets.get(socketId);
                         if (targetSocket && targetSocket.memberId === targetMemberId) {
                             targetSocket.emit('receivedAlarm', {
-                                from: socket.memberId,
-                                to: targetMemberId
+                                from: socket.memberId
                             });
                             console.log(`Alarm sent to member ${targetMemberId} with socketId ${socketId}`);
                             return;
@@ -434,7 +433,7 @@ async function runSocketServer() {
                 console.log(`Sending group alarm from ${socket.memberId} in room ${studyroomId}`);
 
                 // 자신을 제외한 룸의 다른 모든 멤버에게 알람 전송
-                socket.to(studyroomId).emit('receivedGroupAlarm', {
+                socket.to(studyroomId).emit('receivedAlarm', {
                     from: socket.memberId
                 });
 
