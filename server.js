@@ -127,22 +127,9 @@ async function runExpressApp() {
             res.status(500).send('Internal server error: ' + error.message);
         }
     });
-
 }
 
 async function runWebServer() {
-    // https 로 테스트하고 싶은 경우 아래 주석처리 후 여기 주석 비활성화해서 사용하기
-//   const { sslKey, sslCrt } = config;
-//   if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
-//     console.error('SSL files are not found. check your config.js file');
-//     process.exit(0);
-//   }
-//   const tls = {
-//     cert: fs.readFileSync(sslCrt),
-//     key: fs.readFileSync(sslKey),
-//   };
-//   webServer = https.createServer(tls, expressApp);
-
     const { listenIp, listenPort } = config;
     webServer = http.createServer(expressApp);
     webServer.on('error', (err) => {
@@ -209,9 +196,6 @@ async function runSocketServer() {
                 members: roomManager.getRoomMembersWithAppUsage(studyroomId),
                 rtpCapabilities: room.router.rtpCapabilities
             });
-
-            // 새로운 유저가 들어오면 브로드캐스트
-            // socket.to(studyroomId).emit('newUser', { memberId, appappInfo: parsedAppInfo });
 
             // 브로드캐스트
             broadcastRoomUpdate();
@@ -383,7 +367,16 @@ async function runSocketServer() {
                     const consumer = await socket.consumerTransport.consume({
                         producerId: data.producerId,
                         rtpCapabilities,
-                        paused: false,
+                        paused: producer.kind === 'video',
+                    });
+
+                    consumer.on('transportclose', () => {
+                        console.log('Transport closed for consumer');
+                    });
+
+                    consumer.on('producerclose', () => {
+                        console.log('Producer closed for consumer');
+                        socket.emit('consumerClosed', { consumerId: consumer.id });
                     });
     
                     callback({
@@ -392,7 +385,8 @@ async function runSocketServer() {
                         kind: consumer.kind,
                         rtpParameters: consumer.rtpParameters,
                         type: consumer.type,
-                        producerPaused: consumer.producerPaused
+                        producerPaused: consumer.producerPaused,
+                        appData: producer.appData
                     });
                 } catch (error) {
                     console.error('Error consuming:', error);
@@ -410,6 +404,62 @@ async function runSocketServer() {
                 }
             });
 
+            socket.on('startScreenShare', async ({ rtpParameters }, callback) => {
+                if (!socket.room) {
+                    callback({ error: 'Not in a room' });
+                    return;
+                }
+                try {
+                    const room = roomManager.getRoom(socket.room);
+                    
+                    // Create a new producer for screen sharing
+                    const producer = await socket.producerTransport.produce({
+                        kind: 'video',
+                        rtpParameters,
+                        appData: { screen: true, socketId: socket.id }
+                    });
+
+                    room.producers.set(producer.id, producer);
+
+                    callback({ id: producer.id });
+
+                    // Notify other members in the room about the new screen share
+                    socket.to(socket.room).emit('newScreenShare', {
+                        memberId: socket.memberId,
+                        producerId: producer.id
+                    });
+                } catch (error) {
+                    console.error('Error starting screen share:', error);
+                    callback({ error: 'Failed to start screen share' });
+                }
+            });
+
+            socket.on('stopScreenShare', async (producerId, callback) => {
+                if (!socket.room) {
+                    callback({ error: 'Not in a room' });
+                    return;
+                }
+                try {
+                    const room = roomManager.getRoom(socket.room);
+                    const producer = room.producers.get(producerId);
+                    if (producer) {
+                        await producer.close();
+                        room.producers.delete(producerId);
+                    }
+                    
+                    // Notify other members that screen sharing has stopped
+                    socket.to(socket.room).emit('screenShareStopped', {
+                        memberId: socket.memberId,
+                        producerId: producerId
+                    });
+                    
+                    callback({ stopped: true });
+                } catch (error) {
+                    console.error('Error stopping screen share:', error);
+                    callback({ error: 'Failed to stop screen share' });
+                }
+            });
+
             socket.on('fileUploaded', (data) => {
                 const { memberId, response } = data;
                 console.log(`Member ${memberId} uploaded a file:`, response);
@@ -423,7 +473,6 @@ async function runSocketServer() {
                 // UI 업데이트 또는 알림 표시 로직 추가
                 alert(`Member ${memberId} uploaded a new issue: ${response.dataName}`);
             }); 
-
 
             socket.on('sendAlarmToMember', (targetMemberId) => {
                 console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
@@ -455,8 +504,6 @@ async function runSocketServer() {
 
                 console.log(`Group alarm sent to all members in room ${studyroomId} except sender ${socket.memberId}`);
             });
-
-    
         } catch (error) {
             console.error('Error in socket connection:', error);
             socket.emit('error', { message: 'Failed to setup socket connection' });
@@ -464,7 +511,6 @@ async function runSocketServer() {
         }
     });
 }
-
 async function runMediasoupWorker() {
     worker = await mediasoup.createWorker({
         logLevel: config.mediasoup.worker.logLevel,
