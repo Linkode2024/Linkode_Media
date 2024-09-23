@@ -234,8 +234,8 @@ async function runSocketServer() {
                     console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${JSON.stringify(appInfo)}`);
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
                     
-                    // appInfo 확인 -> 유해앱이어도 일단 브로드캐스트, 근데 유해앱이면 클라이언트로 warningHandler 같은 이벤트 리스너 만들어서 처리(화면공유하도록)
-                    
+                    // 유해앱 체크
+                    const isHarmfulApp = checkIfHarmfulApp(appInfo); 
 
                     // 룸의 모든 멤버에게 업데이트된 정보를 브로드캐스트
                     const updatedMembers = roomManager.getRoomMembersWithAppUsage(socket.studyroomId);
@@ -246,6 +246,14 @@ async function runSocketServer() {
                     
                     // 업데이트 성공 메시지를 요청한 클라이언트에게 전송
                     socket.emit('appUsageUpdated', { success: true });
+
+                    if (isHarmfulApp) {
+                        // 유해앱 감지 시 사용자에게 경고 메시지 전송
+                        socket.emit('harmfulAppDetected', {
+                            message: '유해 앱이 감지되었습니다. 10초 후 화면 공유가 시작됩니다.',
+                            appName: appInfo.name
+                        });
+                    }
                 } catch (error) {
                     console.error('Error updating app usage:', error);
                     socket.emit('error', { message: 'Failed to update app usage' });
@@ -343,7 +351,6 @@ async function runSocketServer() {
     
                     callback({ id: producer.id });
     
-                    // inform other members in the room about new producer
                     socket.to(socket.room).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
@@ -563,6 +570,11 @@ async function leaveRoom(socket) {
   
     socket.studyroomId = null;
     socket.memberId = null;
+}
+
+function checkIfHarmfulApp(appInfo) {
+    const harmfulApps = ['유해앱1', '유해앱2', '유해앱3']; // 유해 앱 목록
+    return harmfulApps.includes(appInfo);
 }
   
 module.exports = {

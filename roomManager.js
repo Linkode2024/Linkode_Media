@@ -115,6 +115,24 @@ class RoomManager extends EventEmitter {
     getAllRooms() {
         return Array.from(this.rooms.keys());
     }
+
+    getMemberStatus(studyroomId, memberId) {
+        const room = this.getRoom(studyroomId);
+        
+        // room이 존재하지 않으면 에러 방지
+        if (!room) {
+            console.error(`Room ${studyroomId} does not exist`);
+            return null; // 또는 다른 값을 반환할 수 있음
+        }
+
+        // room이 있을 경우 멤버 상태 확인
+        if (room.members.has(memberId)) {
+            return { memberId, appInfo: room.getMemberAppUsage(memberId) };
+        } else {
+            console.error(`Member ${memberId} does not exist in room ${studyroomId}`);
+            return null; // 또는 '멤버 없음'을 처리
+        }
+    }
 }
 
 module.exports = RoomManager;
