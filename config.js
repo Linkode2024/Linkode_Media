@@ -1,8 +1,8 @@
 module.exports = {
   listenIp: '0.0.0.0',
   listenPort: 3000,
-  sslKey: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3-key.pem',
-  sslCrt: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3.pem',
+  // sslKey: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3-key.pem',
+  // sslCrt: '/Users/jungrlo/Linkode_Media/config/_wildcard.exampel.dev+3.pem',
   mediasoup: {
     // Worker settings
     worker: {
@@ -48,8 +48,8 @@ module.exports = {
     webRtcTransport: {
       listenIps: [
         {
-          ip: '13.209.220.22',
-          announcedIp: 'www.linkodemedia.shop',
+          ip: '127.0.0.1',
+          announcedIp: null,
         }
       ],
       maxIncomingBitrate: 1500000,
