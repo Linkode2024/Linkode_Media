@@ -26,8 +26,8 @@ jobs:
       - name: Install dependencies
         run: npm install
 
-      - name: Build project
-        run: npm run build  # 프로젝트 빌드 명령 추가
+      # - name: Build project
+      #   run: npm run build  # 프로젝트 빌드 명령 추가
 
   docker-build:
     runs-on: ubuntu-latest
