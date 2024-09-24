@@ -1,6 +1,7 @@
 const mediasoup = require('mediasoup');
 const fs = require('fs');
-const http = require('http');
+// const http = require('http');
+const https = require('https');
 const express = require('express');
 const socketIO = require('socket.io');
 const config = require('./config');
@@ -130,21 +131,43 @@ async function runExpressApp() {
 }
 
 async function runWebServer() {
-    const { listenIp, listenPort } = config;
-    webServer = http.createServer(expressApp);
-    webServer.on('error', (err) => {
-        console.error('starting web server failed:', err.message);
-    });
+      // https 로 테스트하고 싶은 경우 아래 주석처리 후 여기 주석 비활성화해서 사용하기
+      const { listenIp, listenPort, sslKey, sslCrt } = config;
+      if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
+          console.error('SSL files are not found. Check your config.js file');
+          process.exit(0);
+      }
+      const tls = {
+          cert: fs.readFileSync(sslCrt),
+          key: fs.readFileSync(sslKey),
+      };
+      webServer = https.createServer(tls, expressApp);
+  
+      await new Promise((resolve) => {
+          webServer.listen(listenPort, listenIp, () => {
+              const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
+              const ip = listenIps.announcedIp || listenIps.ip;
+              console.log('server is running');
+              console.log(`open https://${ip}:${listenPort} in your web browser`);
+              resolve();
+          });
+      });
 
-    await new Promise((resolve) => {
-        webServer.listen(listenPort, listenIp, () => {
-        const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
-        const ip = listenIps.announcedIp || listenIps.ip;
-        console.log('server is running');
-        console.log(`open https://${ip}:${listenPort} in your web browser`);
-        resolve();
-        });
-    });
+    // const { listenIp, listenPort } = config;
+    // webServer = http.createServer(expressApp);
+    // webServer.on('error', (err) => {
+    //     console.error('starting web server failed:', err.message);
+    // });
+
+    // await new Promise((resolve) => {
+    //     webServer.listen(listenPort, listenIp, () => {
+    //     const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
+    //     const ip = listenIps.announcedIp || listenIps.ip;
+    //     console.log('server is running');
+    //     console.log(`open https://${ip}:${listenPort} in your web browser`);
+    //     resolve();
+    //     });
+    // });
 }
 
 async function runSocketServer() {
@@ -404,29 +427,48 @@ async function runSocketServer() {
                 }
             });
 
-            socket.on('startScreenShare', async ({ rtpParameters }, callback) => {
-                if (!socket.room) {
+            // 유해앱 화면 공유
+            socket.on('startScreenShare', async ({ rtpParameters, resolution, frameRate }, callback) => {
+                if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
                 try {
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     
-                    // Create a new producer for screen sharing
+                    // 유저가 이미 화면 공유 중인지 확인
+                    const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
+                    if (activeShare) {
+                        if (activeShare.memberId === socket.memberId) {
+                            callback({ error: 'Already sharing screen' });
+                        } else {
+                            callback({ error: 'Another user is already sharing screen' });
+                        }
+                        return;
+                    }
+
+                    // 새로운 producer 생성 
                     const producer = await socket.producerTransport.produce({
                         kind: 'video',
                         rtpParameters,
-                        appData: { screen: true, socketId: socket.id }
+                        appData: { 
+                            screen: true, 
+                            socketId: socket.id,
+                            resolution,
+                            frameRate
+                        }
                     });
-
                     room.producers.set(producer.id, producer);
+                    roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
 
                     callback({ id: producer.id });
 
-                    // Notify other members in the room about the new screen share
-                    socket.to(socket.room).emit('newScreenShare', {
+                    // 스터디룸의 다른 사용자에게 화면 공유 알림
+                    socket.to(socket.studyroomId).emit('newScreenShare', {
                         memberId: socket.memberId,
-                        producerId: producer.id
+                        producerId: producer.id,
+                        resolution,
+                        frameRate
                     });
                 } catch (error) {
                     console.error('Error starting screen share:', error);
@@ -434,26 +476,34 @@ async function runSocketServer() {
                 }
             });
 
-            socket.on('stopScreenShare', async (producerId, callback) => {
-                if (!socket.room) {
+            socket.on('stopScreenShare', async (callback) => {
+                if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
                 try {
-                    const room = roomManager.getRoom(socket.room);
-                    const producer = room.producers.get(producerId);
+                    const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
+                    if (!activeShare || activeShare.memberId !== socket.memberId) {
+                        callback({ error: 'No active screen share from this user' });
+                        return;
+                    }
+            
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    const producer = room.producers.get(activeShare.producerId);
                     if (producer) {
                         await producer.close();
-                        room.producers.delete(producerId);
+                        room.producers.delete(activeShare.producerId);
                     }
                     
-                    // Notify other members that screen sharing has stopped
-                    socket.to(socket.room).emit('screenShareStopped', {
-                        memberId: socket.memberId,
-                        producerId: producerId
-                    });
+                    roomManager.stopScreenShare(socket.studyroomId);
                     
                     callback({ stopped: true });
+            
+                    // 스터디룸의 다른 사용자에게 화면 공유 중지 알림
+                    socket.to(socket.studyroomId).emit('screenShareStopped', {
+                        memberId: socket.memberId,
+                        producerId: activeShare.producerId
+                    });
                 } catch (error) {
                     console.error('Error stopping screen share:', error);
                     callback({ error: 'Failed to stop screen share' });
