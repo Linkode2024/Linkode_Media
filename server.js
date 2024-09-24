@@ -30,7 +30,13 @@ const roomManager = new RoomManager();
 
 async function runExpressApp() {
     expressApp = express();
-    expressApp.use(cors());
+    const corsOptions = {
+        origin: ['https://localhost:3000', 'https://www.yourfrontendomain.com'], // Add your frontend domain
+        methods: ['GET', 'POST'],
+        allowedHeaders: ['Content-Type', 'Authorization'],
+        credentials: true
+    };
+    expressApp.use(cors(corsOptions));
     expressApp.use(express.json());
     expressApp.use(express.static(__dirname));
 
@@ -162,6 +168,12 @@ async function runSocketServer() {
         serveClient: false,
         path: '/socket.io',
         log: false,
+        cors: {
+            origin: ['https://localhost:3000'],
+            methods: ['GET', 'POST'],
+            allowedHeaders: ['Content-Type', 'Authorization'],
+            credentials: true
+        }
     });
     io = socketServer; 
     socketServer.on('connection', async (socket) => {
