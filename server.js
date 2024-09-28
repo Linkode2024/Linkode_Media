@@ -1,7 +1,7 @@
 const mediasoup = require('mediasoup');
 const fs = require('fs');
-// const http = require('http');
-const https = require('https');
+const http = require('http');
+// const https = require('https');
 const express = require('express');
 const socketIO = require('socket.io');
 const config = require('./config');
@@ -132,17 +132,22 @@ async function runExpressApp() {
 
 async function runWebServer() {
       // https 로 테스트하고 싶은 경우 아래 주석처리 후 여기 주석 비활성화해서 사용하기
-      const { listenIp, listenPort, sslKey, sslCrt } = config;
-      if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
-          console.error('SSL files are not found. Check your config.js file');
-          process.exit(0);
-      }
-      const tls = {
-          cert: fs.readFileSync(sslCrt),
-          key: fs.readFileSync(sslKey),
-      };
-      webServer = https.createServer(tls, expressApp);
-  
+    //   const { listenIp, listenPort, sslKey, sslCrt } = config;
+    //   if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
+    //       console.error('SSL files are not found. Check your config.js file');
+    //       process.exit(0);
+    //   }
+    //   const tls = {
+    //       cert: fs.readFileSync(sslCrt),
+    //       key: fs.readFileSync(sslKey),
+    //   };
+    //   webServer = https.createServer(tls, expressApp);
+
+    const { listenIp, listenPort } = config;
+    webServer = http.createServer(expressApp);
+    webServer.on('error', (err) => {
+        console.error('starting web server failed:', err.message);
+    }); 
       await new Promise((resolve) => {
           webServer.listen(listenPort, listenIp, () => {
               const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
@@ -153,11 +158,7 @@ async function runWebServer() {
           });
       });
 
-    // const { listenIp, listenPort } = config;
-    // webServer = http.createServer(expressApp);
-    // webServer.on('error', (err) => {
-    //     console.error('starting web server failed:', err.message);
-    // });
+
 
     // await new Promise((resolve) => {
     //     webServer.listen(listenPort, listenIp, () => {
