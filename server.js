@@ -533,42 +533,50 @@ async function leaveRoom(socket) {
     if (!socket.studyroomId || !socket.memberId) return;
   
     console.log(`User ${socket.memberId} left study room ${socket.studyroomId}`);
-      
-    if (socket.producerTransport) {
-        socket.producerTransport.close();
-    }
-    if (socket.consumerTransport) {
-        socket.consumerTransport.close();
-    }
-  
-    const room = roomManager.getRoom(socket.studyroomId);
-    
-    if (room) {
-        // Remove all producers and consumers
-        room.producers.forEach(producer => {
-            if (producer.appData.socketId === socket.id) {
-                producer.close();
-                room.producers.delete(producer.id);
-            }
-        });
-  
-        room.consumers.forEach(consumer => {
-            if (consumer.appData.socketId === socket.id) {
-                consumer.close();
-                room.consumers.delete(consumer.id);
-            }
-        });
-  
-        roomManager.leaveRoom(socket.studyroomId, socket.memberId);
-        socket.leave(socket.studyroomId);
-
-        if (roomManager.getRoomMembers(socket.studyroomId).length === 0) {
-            roomManager.removeRoom(socket.studyroomId);
+    // try-catch로 예외 처리
+    try {
+        if (socket.producerTransport) {
+            socket.producerTransport.close();
         }
+        if (socket.consumerTransport) {
+            socket.consumerTransport.close();
+        }
+    
+        const room = roomManager.getRoom(socket.studyroomId);
+        
+        if (room) {
+            // Remove all producers and consumers
+            if (room.producers && typeof room.producers.forEach === 'function') {
+                room.producers.forEach(producer => {
+                    if (producer.appData.socketId === socket.id) {
+                        producer.close();
+                        room.producers.delete(producer.id);
+                    }
+                });
+            }
+    
+            if (room.consumers && typeof room.consumers.forEach === 'function') {
+                room.consumers.forEach(consumer => {
+                    if (consumer.appData.socketId === socket.id) {
+                        consumer.close();
+                        room.consumers.delete(consumer.id);
+                    }
+                });
+            }
+    
+            roomManager.leaveRoom(socket.studyroomId, socket.memberId);
+            socket.leave(socket.studyroomId);
+
+            if (roomManager.getRoomMembers(socket.studyroomId).length === 0) {
+                roomManager.removeRoom(socket.studyroomId);
+            }
+        }
+    } catch (error) {
+        console.error(`Error in leaveRoom for user ${socket.memberId} in room ${socket.studyroomId}:`, error);
+    } finally {
+        socket.studyroomId = null;
+        socket.memberId = null;
     }
-  
-    socket.studyroomId = null;
-    socket.memberId = null;
 }
   
 module.exports = {
