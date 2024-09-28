@@ -1,6 +1,7 @@
 const mediasoup = require('mediasoup');
 const fs = require('fs');
 const http = require('http');
+// const https = require('https');
 const express = require('express');
 const socketIO = require('socket.io');
 const config = require('./config');
@@ -8,7 +9,6 @@ const path = require('path');
 const cors = require('cors');
 const RoomManager = require('./roomManager');
 
-// Global variables
 let worker;
 let webServer;
 let socketServer;
@@ -40,6 +40,10 @@ async function runExpressApp() {
     expressApp.use(express.json());
     expressApp.use(express.static(__dirname));
 
+    expressApp.get('/test', (res,req)=>{
+        res.send('test success!');
+    })
+    
     /// API routes
     expressApp.post('/api/joinRoom', (req, res) => {
         const { studyroomId, memberId } = req.body;
@@ -130,37 +134,47 @@ async function runExpressApp() {
             res.status(500).send('Internal server error: ' + error.message);
         }
     });
-
 }
 
 async function runWebServer() {
-    // https 로 테스트하고 싶은 경우 아래 주석처리 후 여기 주석 비활성화해서 사용하기
-//   const { sslKey, sslCrt } = config;
-//   if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
-//     console.error('SSL files are not found. check your config.js file');
-//     process.exit(0);
-//   }
-//   const tls = {
-//     cert: fs.readFileSync(sslCrt),
-//     key: fs.readFileSync(sslKey),
-//   };
-//   webServer = https.createServer(tls, expressApp);
+      // https 로 테스트하고 싶은 경우 아래 주석처리 후 여기 주석 비활성화해서 사용하기
+    //   const { listenIp, listenPort, sslKey, sslCrt } = config;
+    //   if (!fs.existsSync(sslKey) || !fs.existsSync(sslCrt)) {
+    //       console.error('SSL files are not found. Check your config.js file');
+    //       process.exit(0);
+    //   }
+    //   const tls = {
+    //       cert: fs.readFileSync(sslCrt),
+    //       key: fs.readFileSync(sslKey),
+    //   };
+    //   webServer = https.createServer(tls, expressApp);
 
     const { listenIp, listenPort } = config;
     webServer = http.createServer(expressApp);
     webServer.on('error', (err) => {
         console.error('starting web server failed:', err.message);
-    });
+    }); 
+      await new Promise((resolve) => {
+          webServer.listen(listenPort, listenIp, () => {
+              const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
+              const ip = listenIps.announcedIp || listenIps.ip;
+              console.log('server is running');
+              console.log(`open https://${ip}:${listenPort} in your web browser`);
+              resolve();
+          });
+      });
 
-    await new Promise((resolve) => {
-        webServer.listen(listenPort, listenIp, () => {
-        const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
-        const ip = listenIps.announcedIp || listenIps.ip;
-        console.log('server is running');
-        console.log(`open https://${ip}:${listenPort} in your web browser`);
-        resolve();
-        });
-    });
+
+
+    // await new Promise((resolve) => {
+    //     webServer.listen(listenPort, listenIp, () => {
+    //     const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
+    //     const ip = listenIps.announcedIp || listenIps.ip;
+    //     console.log('server is running');
+    //     console.log(`open https://${ip}:${listenPort} in your web browser`);
+    //     resolve();
+    //     });
+    // });
 }
 
 async function runSocketServer() {
@@ -219,9 +233,6 @@ async function runSocketServer() {
                 rtpCapabilities: room.router.rtpCapabilities
             });
 
-            // 새로운 유저가 들어오면 브로드캐스트
-            // socket.to(studyroomId).emit('newUser', { memberId, appappInfo: parsedAppInfo });
-
             // 브로드캐스트
             broadcastRoomUpdate();
 
@@ -243,6 +254,9 @@ async function runSocketServer() {
                     console.log(`Updating app usage for ${socket.memberId} in room ${socket.studyroomId}: ${JSON.stringify(appInfo)}`);
                     roomManager.updateMemberAppUsage(socket.studyroomId, socket.memberId, appInfo);
                     
+                    // 유해앱 체크
+                    const isHarmfulApp = checkIfHarmfulApp(appInfo); 
+
                     // 룸의 모든 멤버에게 업데이트된 정보를 브로드캐스트
                     const updatedMembers = roomManager.getRoomMembersWithAppUsage(socket.studyroomId);
                     socketServer.to(socket.studyroomId).emit('roomUpdate', {
@@ -252,6 +266,14 @@ async function runSocketServer() {
                     
                     // 업데이트 성공 메시지를 요청한 클라이언트에게 전송
                     socket.emit('appUsageUpdated', { success: true });
+
+                    if (isHarmfulApp) {
+                        // 유해앱 감지 시 사용자에게 경고 메시지 전송
+                        socket.emit('harmfulAppDetected', {
+                            message: '유해 앱이 감지되었습니다. 10초 후 화면 공유가 시작됩니다.',
+                            appName: appInfo.name
+                        });
+                    }
                 } catch (error) {
                     console.error('Error updating app usage:', error);
                     socket.emit('error', { message: 'Failed to update app usage' });
@@ -349,7 +371,6 @@ async function runSocketServer() {
     
                     callback({ id: producer.id });
     
-                    // inform other members in the room about new producer
                     socket.to(socket.room).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
@@ -382,7 +403,16 @@ async function runSocketServer() {
                     const consumer = await socket.consumerTransport.consume({
                         producerId: data.producerId,
                         rtpCapabilities,
-                        paused: false,
+                        paused: producer.kind === 'video',
+                    });
+
+                    consumer.on('transportclose', () => {
+                        console.log('Transport closed for consumer');
+                    });
+
+                    consumer.on('producerclose', () => {
+                        console.log('Producer closed for consumer');
+                        socket.emit('consumerClosed', { consumerId: consumer.id });
                     });
     
                     callback({
@@ -391,7 +421,8 @@ async function runSocketServer() {
                         kind: consumer.kind,
                         rtpParameters: consumer.rtpParameters,
                         type: consumer.type,
-                        producerPaused: consumer.producerPaused
+                        producerPaused: consumer.producerPaused,
+                        appData: producer.appData
                     });
                 } catch (error) {
                     console.error('Error consuming:', error);
@@ -409,6 +440,89 @@ async function runSocketServer() {
                 }
             });
 
+            // 유해앱 화면 공유
+            socket.on('startScreenShare', async ({ rtpParameters, resolution, frameRate }, callback) => {
+                if (!socket.studyroomId) {
+                    callback({ error: 'Not in a room' });
+                    return;
+                }
+                try {
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    
+                    // 유저가 이미 화면 공유 중인지 확인
+                    const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
+                    if (activeShare) {
+                        if (activeShare.memberId === socket.memberId) {
+                            callback({ error: 'Already sharing screen' });
+                        } else {
+                            callback({ error: 'Another user is already sharing screen' });
+                        }
+                        return;
+                    }
+
+                    // 새로운 producer 생성 
+                    const producer = await socket.producerTransport.produce({
+                        kind: 'video',
+                        rtpParameters,
+                        appData: { 
+                            screen: true, 
+                            socketId: socket.id,
+                            resolution,
+                            frameRate
+                        }
+                    });
+                    room.producers.set(producer.id, producer);
+                    roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
+
+                    callback({ id: producer.id });
+
+                    // 스터디룸의 다른 사용자에게 화면 공유 알림
+                    socket.to(socket.studyroomId).emit('newScreenShare', {
+                        memberId: socket.memberId,
+                        producerId: producer.id,
+                        resolution,
+                        frameRate
+                    });
+                } catch (error) {
+                    console.error('Error starting screen share:', error);
+                    callback({ error: 'Failed to start screen share' });
+                }
+            });
+
+            socket.on('stopScreenShare', async (callback) => {
+                if (!socket.studyroomId) {
+                    callback({ error: 'Not in a room' });
+                    return;
+                }
+                try {
+                    const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
+                    if (!activeShare || activeShare.memberId !== socket.memberId) {
+                        callback({ error: 'No active screen share from this user' });
+                        return;
+                    }
+            
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    const producer = room.producers.get(activeShare.producerId);
+                    if (producer) {
+                        await producer.close();
+                        room.producers.delete(activeShare.producerId);
+                    }
+                    
+                    roomManager.stopScreenShare(socket.studyroomId);
+                    
+                    callback({ stopped: true });
+            
+                    // 스터디룸의 다른 사용자에게 화면 공유 중지 알림
+                    socket.to(socket.studyroomId).emit('screenShareStopped', {
+                        memberId: socket.memberId,
+                        producerId: activeShare.producerId
+                    });
+                } catch (error) {
+                    console.error('Error stopping screen share:', error);
+                    callback({ error: 'Failed to stop screen share' });
+                }
+            });
+
             socket.on('fileUploaded', (data) => {
                 const { memberId, response } = data;
                 console.log(`Member ${memberId} uploaded a file:`, response);
@@ -422,7 +536,6 @@ async function runSocketServer() {
                 // UI 업데이트 또는 알림 표시 로직 추가
                 alert(`Member ${memberId} uploaded a new issue: ${response.dataName}`);
             }); 
-
 
             socket.on('sendAlarmToMember', (targetMemberId) => {
                 console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
@@ -454,8 +567,6 @@ async function runSocketServer() {
 
                 console.log(`Group alarm sent to all members in room ${studyroomId} except sender ${socket.memberId}`);
             });
-
-    
         } catch (error) {
             console.error('Error in socket connection:', error);
             socket.emit('error', { message: 'Failed to setup socket connection' });
@@ -463,7 +574,6 @@ async function runSocketServer() {
         }
     });
 }
-
 async function runMediasoupWorker() {
     worker = await mediasoup.createWorker({
         logLevel: config.mediasoup.worker.logLevel,
@@ -577,6 +687,11 @@ async function leaveRoom(socket) {
         socket.studyroomId = null;
         socket.memberId = null;
     }
+}
+
+function checkIfHarmfulApp(appInfo) {
+    const harmfulApps = ['유해앱1', '유해앱2', '유해앱3']; // 유해 앱 목록
+    return harmfulApps.includes(appInfo);
 }
   
 module.exports = {
