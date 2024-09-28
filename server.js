@@ -441,25 +441,35 @@ async function runSocketServer() {
             });
 
             // 유해앱 화면 공유
-            socket.on('startScreenShare', async ({ rtpParameters, resolution, frameRate }, callback) => {
+            socket.on('startScreenShare', async (data, callback) => {
                 if (!socket.studyroomId) {
-                    callback({ error: 'Not in a room' });
+                    if (typeof callback === 'function') {
+                        callback({ error: 'Not in a room' });
+                    }
                     return;
                 }
                 try {
+                    const { rtpParameters, resolution, frameRate } = data;
                     const room = roomManager.getRoom(socket.studyroomId);
+                    
+                    if (!room) {
+                        throw new Error('Room not found');
+                    }
                     
                     // 유저가 이미 화면 공유 중인지 확인
                     const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
                     if (activeShare) {
                         if (activeShare.memberId === socket.memberId) {
-                            callback({ error: 'Already sharing screen' });
+                            throw new Error('Already sharing screen');
                         } else {
-                            callback({ error: 'Another user is already sharing screen' });
+                            throw new Error('Another user is already sharing screen');
                         }
-                        return;
                     }
-
+            
+                    if (!socket.producerTransport) {
+                        throw new Error('Producer transport not set up');
+                    }
+            
                     // 새로운 producer 생성 
                     const producer = await socket.producerTransport.produce({
                         kind: 'video',
@@ -473,9 +483,11 @@ async function runSocketServer() {
                     });
                     room.producers.set(producer.id, producer);
                     roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
-
-                    callback({ id: producer.id });
-
+            
+                    if (typeof callback === 'function') {
+                        callback({ id: producer.id });
+                    }
+            
                     // 스터디룸의 다른 사용자에게 화면 공유 알림
                     socket.to(socket.studyroomId).emit('newScreenShare', {
                         memberId: socket.memberId,
@@ -485,7 +497,9 @@ async function runSocketServer() {
                     });
                 } catch (error) {
                     console.error('Error starting screen share:', error);
-                    callback({ error: 'Failed to start screen share' });
+                    if (typeof callback === 'function') {
+                        callback({ error: 'Failed to start screen share: ' + error.message });
+                    }
                 }
             });
 
