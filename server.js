@@ -704,7 +704,27 @@ async function leaveRoom(socket) {
 }
 
 function checkIfHarmfulApp(appInfo) {
-    const harmfulApps = ['유해앱1', '유해앱2', '유해앱3']; // 유해 앱 목록
+    const harmfulApps = ['League of Legends',
+                            'Fortnite',
+                            'Counter-Strike: Global Offensive',
+                            'Dota 2',
+                            'Minecraft',
+                            'World of Warcraft',
+                            'PUBG',
+                            'Call of Duty',
+                            'Apex Legends',
+                            'Valorant',
+                            'Facebook',
+                            'Twitter',
+                            'Instagram',
+                            'Snapchat',
+                            'YouTube',
+                            'Netflix',
+                            'Twitch',
+                            'TikTok',
+                            'Steam',
+                            'Epic Games',
+                            '유해앱1']; // 유해 앱 목록
     return harmfulApps.includes(appInfo);
 }
   
