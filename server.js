@@ -311,12 +311,12 @@ async function runSocketServer() {
                         return;
                     }
                 
-                    if (!socket.room) {
+                    if (!socket.studyroomId) {
                         callback({ error: 'Not in a room' });
                         return;
                     }
                 
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.producerTransport = transport;
                     callback(params);
