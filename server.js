@@ -616,34 +616,61 @@ async function runMediasoupWorker() {
 }
 
 async function createWebRtcTransport(router) {
+    console.log('Creating WebRTC Transport');
+    
     const {
         maxIncomingBitrate,
         initialAvailableOutgoingBitrate
     } = config.mediasoup.webRtcTransport;
 
-    const transport = await router.createWebRtcTransport({
-        listenIps: config.mediasoup.webRtcTransport.listenIps,
-        enableUdp: true,
-        enableTcp: true,
-        preferUdp: true,
+    console.log('Transport configuration:', {
+        maxIncomingBitrate,
         initialAvailableOutgoingBitrate,
+        listenIps: config.mediasoup.webRtcTransport.listenIps
     });
-    if (maxIncomingBitrate) {
-        try {
-        await transport.setMaxIncomingBitrate(maxIncomingBitrate);
-        } catch (error) {
-        console.error('Error setting max incoming bitrate:', error);
+
+    try {
+        const transport = await router.createWebRtcTransport({
+            listenIps: config.mediasoup.webRtcTransport.listenIps,
+            enableUdp: true,
+            enableTcp: true,
+            preferUdp: true,
+            initialAvailableOutgoingBitrate,
+        });
+
+        console.log('WebRTC Transport created successfully:', {
+            id: transport.id,
+            iceParameters: transport.iceParameters,
+            iceCandidates: transport.iceCandidates,
+            dtlsParameters: transport.dtlsParameters
+        });
+
+        if (maxIncomingBitrate) {
+            try {
+                await transport.setMaxIncomingBitrate(maxIncomingBitrate);
+                console.log(`Max incoming bitrate set to ${maxIncomingBitrate}`);
+            } catch (error) {
+                console.error('Error setting max incoming bitrate:', error);
+            }
         }
+
+        const returnParams = {
+            transport,
+            params: {
+                id: transport.id,
+                iceParameters: transport.iceParameters,
+                iceCandidates: transport.iceCandidates,
+                dtlsParameters: transport.dtlsParameters
+            },
+        };
+
+        console.log('Returning transport parameters:', returnParams.params);
+
+        return returnParams;
+    } catch (error) {
+        console.error('Error creating WebRTC Transport:', error);
+        throw error;
     }
-    return {
-        transport,
-        params: {
-        id: transport.id,
-        iceParameters: transport.iceParameters,
-        iceCandidates: transport.iceCandidates,
-        dtlsParameters: transport.dtlsParameters
-        },
-    };
 }
 
 async function joinRoom(socket, studyroomId, memberId, appInfo) {
