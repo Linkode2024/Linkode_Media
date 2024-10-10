@@ -71,7 +71,10 @@ jobs:
 
             # 최신 이미지를 가져와서 실행
             sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
-            sudo docker run -d -p 9000:3000 ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
+            sudo docker run -d \
+              -p 10000-10200:10000-10200/udp \
+              —name my_app_container \
+              ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
 
             # 로그 확인
             sudo docker logs $(sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }})
