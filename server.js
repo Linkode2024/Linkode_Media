@@ -164,8 +164,6 @@ async function runWebServer() {
           });
       });
 
-
-
     // await new Promise((resolve) => {
     //     webServer.listen(listenPort, listenIp, () => {
     //     const listenIps = config.mediasoup.webRtcTransport.listenIps[0];
@@ -306,11 +304,18 @@ async function runSocketServer() {
             });
     
             socket.on('createProducerTransport', async (data, callback) => {
-                if (!socket.room) {
-                    callback({ error: 'Not in a room' });
-                    return;
-                }
+                // 콜백이 함수인지 확인
                 try {
+                    if (typeof callback !== 'function') {
+                        console.error('createProducerTransport called without a valid callback');
+                        return;
+                    }
+                
+                    if (!socket.room) {
+                        callback({ error: 'Not in a room' });
+                        return;
+                    }
+                
                     const room = roomManager.getRoom(socket.room);
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.producerTransport = transport;
