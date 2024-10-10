@@ -325,6 +325,8 @@ async function runSocketServer() {
                     const room = roomManager.getRoom(socket.studyroomId);
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.producerTransport = transport;
+                    console.log('params!!!! -> ',params);
+
                     callback(params);
                 } catch (err) {
                     console.error('Error creating producer transport:', err);
