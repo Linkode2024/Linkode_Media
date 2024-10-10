@@ -73,7 +73,7 @@ jobs:
             sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
             sudo docker run -d \
               -p 10000-10200:10000-10200/udp \
-              —name my_app_container \
+              --name my_app_container \
               ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
 
             # 로그 확인
