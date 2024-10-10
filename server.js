@@ -304,6 +304,12 @@ async function runSocketServer() {
             });
     
             socket.on('createProducerTransport', async (data, callback) => {
+                console.log('createProducerTransport called. Socket studyroomId:', socket.studyroomId);
+                console.log('Socket details:', {
+                    id: socket.id,
+                    studyroomId: socket.studyroomId,
+                    memberId: socket.memberId
+                });
                 // 콜백이 함수인지 확인
                 try {
                     if (typeof callback !== 'function') {
