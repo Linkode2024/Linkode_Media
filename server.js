@@ -350,7 +350,9 @@ async function runSocketServer() {
     
             socket.on('connectProducerTransport', async (data, callback) => {
                 try {
+                    console.log('connectProducerTransport 입장!!!!')
                     await socket.producerTransport.connect({ dtlsParameters: data.dtlsParameters });
+                    console.log('connectProducerTransport socket.produceTransport.connect 완료 !!!!')
                     callback();
                 } catch (error) {
                     console.error('Error connecting producer transport:', error);
