@@ -67,7 +67,7 @@ module.exports = {
       listenIps: [
         {
           ip: '3.34.193.132',
-          announcedIp: null,
+          announcedIp: 'www.linkodemedia.shop',
         }
       ],
       maxIncomingBitrate: 1500000,
