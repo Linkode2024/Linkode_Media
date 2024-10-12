@@ -290,12 +290,12 @@ async function runSocketServer() {
             });
     
             socket.on('getRouterRtpCapabilities', (data, callback) => {
-                if (!socket.room) {
+                if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
                 try {
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     callback(room.router.rtpCapabilities);
                 } catch (error) {
                     console.error('Error getting RTP capabilities:', error);
@@ -335,12 +335,12 @@ async function runSocketServer() {
             });
     
             socket.on('createConsumerTransport', async (data, callback) => {
-                if (!socket.room) {
+                if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
                 try {
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.consumerTransport = transport;
                     callback(params);
@@ -405,7 +405,7 @@ async function runSocketServer() {
             });
     
             socket.on('produce', async (data, callback) => {
-                if (!roomManager.getRoom(socket.room).getMemberStatus(socket.memberId).isHarmfulAppDetected) {
+                if (!roomManager.getRoom(socket.studyroomId).getMemberStatus(socket.memberId).isHarmfulAppDetected) {
                     callback({ error: 'Not allowed to produce' });
                     return;
                 }
@@ -413,12 +413,12 @@ async function runSocketServer() {
                 try {
                     const {kind, rtpParameters} = data;
                     const producer = await socket.producerTransport.produce({ kind, rtpParameters });
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     room.producers.set(producer.id, producer);
     
                     callback({ id: producer.id });
     
-                    socket.to(socket.room).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
+                    socket.to(socket.studyroomId).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
                     callback({ error: 'Failed to produce' });
@@ -426,12 +426,12 @@ async function runSocketServer() {
             });
     
             socket.on('consume', async (data, callback) => {
-                if (!socket.room) {
+                if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
                 try {
-                    const room = roomManager.getRoom(socket.room);
+                    const room = roomManager.getRoom(socket.studyroomId);
                     const producer = room.producers.get(data.producerId);
                     if (!producer) {
                         callback({ error: 'Producer not found' });
