@@ -405,25 +405,49 @@ async function runSocketServer() {
             });
     
             socket.on('produce', async (data, callback) => {
+                console.log('Produce event received:', data);
+                // 콜백이 함수인지 확인
+                if (typeof callback !== 'function') {
+                    console.error('Callback is not a function');
+                    return;
+                }
+
                 const room = roomManager.getRoom(socket.studyroomId);
                 if (!room) {
+                    console.error(`Room not found for studyroomId: ${socket.studyroomId}`);
                     callback({ error: 'Room not found' });
                     return;
                 }
             
                 const memberStatus = room.getMemberStatus(socket.memberId);
                 if (!memberStatus || memberStatus.isHarmfulAppDetected) {
-                    callback({ error: 'Not allowed to produce' });
+                    console.error(`Member status not found for memberId: ${socket.memberId}`);
+                    callback({ error: 'Member status not found' });
                     return;
                 }
+
+                if (memberStatus.isHarmfulAppDetected) {
+                    console.warn(`Harmful app detected for member: ${socket.memberId}`);
+                    callback({ error: 'Not allowed to produce due to harmful app detection' });
+                    return;
+                }            
             
                 try {
                     const {kind, rtpParameters} = data;
+                    console.log(`Attempting to produce ${kind} stream`);
+                    
+                    if (!socket.producerTransport) {
+                        console.error('Producer transport not found');
+                        callback({ error: 'Producer transport not found' });
+                        return;
+                    }
+
                     const producer = await socket.producerTransport.produce({ kind, rtpParameters });
                     room.producers.set(producer.id, producer);
-            
+
+                    console.log(`Producer created successfully. ID: ${producer.id}`);
                     callback({ id: producer.id });
-            
+
                     socket.to(socket.studyroomId).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
