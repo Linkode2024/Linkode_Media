@@ -352,15 +352,35 @@ async function runSocketServer() {
             });
     
             socket.on('connectProducerTransport', async (data, callback) => {
+                console.log('connectProducerTransport called. Socket ID:', socket.id);
+                console.log('Received data:', data);
+            
                 try {
-                    console.log('connectProducerTransport 입장!!!!')
+                    console.log('Checking if producerTransport exists...');
+                    if (!socket.producerTransport) {
+                        console.error('producerTransport does not exist for this socket');
+                        callback({ error: 'Producer transport not found' });
+                        return;
+                    }
+            
+                    console.log('producerTransport exists. Attempting to connect...');
+                    console.log('DTLS parameters received:', data.dtlsParameters);
+            
                     await socket.producerTransport.connect({ dtlsParameters: data.dtlsParameters });
-                    console.log('connectProducerTransport socket.produceTransport.connect 완료 !!!!')
+                    
+                    console.log('producerTransport successfully connected');
+            
                     callback();
+                    console.log('Callback called without errors');
                 } catch (error) {
                     console.error('Error connecting producer transport:', error);
-                    callback({ error: 'Failed to connect producer transport' });
+                    console.error('Error stack:', error.stack);
+                    console.log('Attempting to call callback with error');
+                    callback({ error: 'Failed to connect producer transport', details: error.message });
+                    console.log('Error callback called');
                 }
+            
+                console.log('connectProducerTransport handler completed');
             });
     
             socket.on('connectConsumerTransport', async (data, callback) => {
