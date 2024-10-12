@@ -49,12 +49,12 @@ jobs:
 
       - name: Push Docker image to Docker Hub
         run: docker push ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
-
+ 
   deploy:
     runs-on: ubuntu-latest
     needs: docker-build
     steps:
-      - name: Deploy to server
+      - name: Deploy to Docker Swarm
         uses: appleboy/ssh-action@master
         with:
           username: ubuntu
@@ -62,19 +62,12 @@ jobs:
           key: ${{ secrets.PRIVATE_KEY }}
           port: ${{ secrets.WAS_PORT }}
           script: |
-            # 기존 컨테이너가 실행 중이면 종료하고 삭제
-            CONTAINER_ID=$(sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }})
-            if [ ! -z "$CONTAINER_ID" ]; then
-              sudo docker stop $CONTAINER_ID
-              sudo docker rm $CONTAINER_ID
+            sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
+
+            if sudo docker service ls | grep -q "my-app"; then
+              sudo docker service update --image ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest my-app
+            else
+              sudo docker service create --name my-app --replicas 2 -p 9000:3000 --update-parallelism 1 --update-delay 10s ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
             fi
 
-            # 최신 이미지를 가져와서 실행
-            sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
-            sudo docker run -d -p 9000:3000 ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
-
-            # 로그 확인
-            sudo docker logs $(sudo docker ps -q --filter ancestor=${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }})
-
-            # 사용하지 않는 도커 이미지 제거
             sudo docker image prune -f
