@@ -404,74 +404,54 @@ async function runSocketServer() {
                 }
             });
     
-            socket.on('produce', async (data, callback) => {
-                console.log('Produce event received:', data);
-                // 콜백이 함수인지 확인
-                if (typeof callback !== 'function') {
-                    console.error('Callback is not a function');
-                    return;
-                }
+            // socket.on('produce', async (data, callback) => {
+            //     console.log('Produce event received:', data);
+            //     // 콜백이 함수인지 확인
+            //     if (typeof callback !== 'function') {
+            //         console.error('Callback is not a function');
+            //         return;
+            //     }
 
-                const room = roomManager.getRoom(socket.studyroomId);
-                if (!room) {
-                    console.error(`Room not found for studyroomId: ${socket.studyroomId}`);
-                    callback({ error: 'Room not found' });
-                    return;
-                }
+            //     const room = roomManager.getRoom(socket.studyroomId);
+            //     if (!room) {
+            //         console.error(`Room not found for studyroomId: ${socket.studyroomId}`);
+            //         callback({ error: 'Room not found' });
+            //         return;
+            //     }
             
-                const memberStatus = room.getMemberStatus(socket.memberId);
-                if (!memberStatus || memberStatus.isHarmfulAppDetected) {
-                    console.error(`Member status not found for memberId: ${socket.memberId}`);
-                    callback({ error: 'Member status not found' });
-                    return;
-                }
+            //     const memberStatus = room.getMemberStatus(socket.memberId);
+            //     if (!memberStatus || memberStatus.isHarmfulAppDetected) {
+            //         console.error(`Member status not found for memberId: ${socket.memberId}`);
+            //         callback({ error: 'Member status not found' });
+            //         return;
+            //     }
 
-                // if (memberStatus.isHarmfulAppDetected) {
-                //     console.warn(`Harmful app detected for member: ${socket.memberId}`);
-                //     callback({ error: 'Not allowed to produce due to harmful app detection' });
-                //     return;
-                // }            
+            //     if (memberStatus.isHarmfulAppDetected) {
+            //         console.warn(`Harmful app detected for member: ${socket.memberId}`);
+            //         callback({ error: 'Not allowed to produce due to harmful app detection' });
+            //         return;
+            //     }            
             
-                try {
-                    const {kind, rtpParameters, isScreenShare, resolution, frameRate} = data;
-                    console.log(`Attempting to produce ${kind} stream${isScreenShare ? ' (screen share)' : ''}`);
+            //     try {
+            //         const {kind, rtpParameters} = data;
+            //         console.log(`Attempting to produce ${kind} stream`);
                     
-                    if (!socket.producerTransport) {
-                        console.error('Producer transport not found');
-                        callback({ error: 'Producer transport not found' });
-                        return;
-                    }
-            
-                    const producer = await socket.producerTransport.produce({ 
-                        kind, 
-                        rtpParameters,
-                        appData: isScreenShare ? { 
-                            screen: true, 
-                            socketId: socket.id,
-                            resolution,
-                            frameRate
-                        } : {}
-                    });
-                    room.producers.set(producer.id, producer);
-            
-                    if (isScreenShare) {
-                        console.log("newScreen if 문 안으로 들어옴!!!!")
-                        roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
-                        socket.to(socket.studyroomId).emit('newScreenShare', {
-                            memberId: socket.memberId,
-                            producerId: producer.id,
-                            resolution,
-                            frameRate
-                        });
-                    }
-            
-                    console.log(`Producer created successfully. ID: ${producer.id}`);
-                    callback({ id: producer.id });
-                } catch (error) {
-                    console.error('Error producing:', error);
-                    callback({ error: 'Failed to produce' });
-                }
-            });
+            //         if (!socket.producerTransport) {
+            //             console.error('Producer transport not found');
+            //             callback({ error: 'Producer transport not found' });
+            //             return;
+            //         }
+
+            //         const producer = await socket.producerTransport.produce({ kind, rtpParameters });
+            //         room.producers.set(producer.id, producer);
+
+            //         console.log(`Producer created successfully. ID: ${producer.id}`);
+            //         callback({ id: producer.id });
+            //     } catch (error) {
+            //         console.error('Error producing:', error);
+            //         callback({ error: 'Failed to produce' });
+            //     }
+            // });
     
             socket.on('consume', async (data, callback) => {
                 if (!socket.studyroomId) {
@@ -537,13 +517,16 @@ async function runSocketServer() {
 
             // 유해앱 화면 공유
             socket.on('startScreenShare', async (data, callback) => {
+                console.log("스크린쉐어 진입!")
                 if (!socket.studyroomId) {
                     if (typeof callback === 'function') {
-                        callback({ error: 'Not in a room' });
+                        console.error('Callback is not a function');
                     }
                     return;
                 }
+                console.log("callback function 통과")
                 try {
+                    console.log('스크린 쉐어에서 받은 데이터 :', data);
                     const { rtpParameters, resolution, frameRate } = data;
                     const room = roomManager.getRoom(socket.studyroomId);
                     
@@ -576,6 +559,7 @@ async function runSocketServer() {
                             frameRate
                         }
                     });
+                    console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
                     room.producers.set(producer.id, producer);
                     roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
             
@@ -590,6 +574,8 @@ async function runSocketServer() {
                         resolution,
                         frameRate
                     });
+                    
+                    console.log('브로드캐스트까지 완료');
                 } catch (error) {
                     console.error('Error starting screen share:', error);
                     if (typeof callback === 'function') {
