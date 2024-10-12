@@ -355,6 +355,12 @@ async function runSocketServer() {
                 console.log('connectProducerTransport called. Socket ID:', socket.id);
                 console.log('Received data:', data);
             
+                // 콜백이 함수인지 확인
+                if (typeof callback !== 'function') {
+                    console.error('connectProducerTransport called without a valid callback');
+                    return;
+                }
+            
                 try {
                     console.log('Checking if producerTransport exists...');
                     if (!socket.producerTransport) {
@@ -363,7 +369,13 @@ async function runSocketServer() {
                         return;
                     }
             
-                    console.log('producerTransport exists. Attempting to connect...');
+                    console.log('producerTransport exists. Checking DTLS parameters...');
+                    if (!data || !data.dtlsParameters) {
+                        console.error('DTLS parameters are missing');
+                        callback({ error: 'DTLS parameters are missing' });
+                        return;
+                    }
+            
                     console.log('DTLS parameters received:', data.dtlsParameters);
             
                     await socket.producerTransport.connect({ dtlsParameters: data.dtlsParameters });
@@ -377,7 +389,6 @@ async function runSocketServer() {
                     console.error('Error stack:', error.stack);
                     console.log('Attempting to call callback with error');
                     callback({ error: 'Failed to connect producer transport', details: error.message });
-                    console.log('Error callback called');
                 }
             
                 console.log('connectProducerTransport handler completed');
