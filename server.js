@@ -343,7 +343,6 @@ async function runSocketServer() {
                     const room = roomManager.getRoom(socket.room);
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.consumerTransport = transport;
-                    
                     callback(params);
                     console.log('callback 완료!!!!');
                 } catch (err) {
