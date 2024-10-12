@@ -447,8 +447,6 @@ async function runSocketServer() {
 
                     console.log(`Producer created successfully. ID: ${producer.id}`);
                     callback({ id: producer.id });
-
-                    socket.broadcast.to(socket.studyroomId).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
                     callback({ error: 'Failed to produce' });
