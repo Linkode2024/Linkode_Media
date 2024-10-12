@@ -405,19 +405,25 @@ async function runSocketServer() {
             });
     
             socket.on('produce', async (data, callback) => {
-                if (!roomManager.getRoom(socket.studyroomId).getMemberStatus(socket.memberId).isHarmfulAppDetected) {
+                const room = roomManager.getRoom(socket.studyroomId);
+                if (!room) {
+                    callback({ error: 'Room not found' });
+                    return;
+                }
+            
+                const memberStatus = room.getMemberStatus(socket.memberId);
+                if (!memberStatus || memberStatus.isHarmfulAppDetected) {
                     callback({ error: 'Not allowed to produce' });
                     return;
                 }
-    
+            
                 try {
                     const {kind, rtpParameters} = data;
                     const producer = await socket.producerTransport.produce({ kind, rtpParameters });
-                    const room = roomManager.getRoom(socket.studyroomId);
                     room.producers.set(producer.id, producer);
-    
+            
                     callback({ id: producer.id });
-    
+            
                     socket.to(socket.studyroomId).emit('newProducer', { memberId: socket.memberId, producerId: producer.id });
                 } catch (error) {
                     console.error('Error producing:', error);
