@@ -433,18 +433,37 @@ async function runSocketServer() {
                 }            
             
                 try {
-                    const {kind, rtpParameters} = data;
-                    console.log(`Attempting to produce ${kind} stream`);
+                    const {kind, rtpParameters, isScreenShare, resolution, frameRate} = data;
+                    console.log(`Attempting to produce ${kind} stream${isScreenShare ? ' (screen share)' : ''}`);
                     
                     if (!socket.producerTransport) {
                         console.error('Producer transport not found');
                         callback({ error: 'Producer transport not found' });
                         return;
                     }
-
-                    const producer = await socket.producerTransport.produce({ kind, rtpParameters });
+            
+                    const producer = await socket.producerTransport.produce({ 
+                        kind, 
+                        rtpParameters,
+                        appData: isScreenShare ? { 
+                            screen: true, 
+                            socketId: socket.id,
+                            resolution,
+                            frameRate
+                        } : {}
+                    });
                     room.producers.set(producer.id, producer);
-
+            
+                    if (isScreenShare) {
+                        roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
+                        socket.to(socket.studyroomId).emit('newScreenShare', {
+                            memberId: socket.memberId,
+                            producerId: producer.id,
+                            resolution,
+                            frameRate
+                        });
+                    }
+            
                     console.log(`Producer created successfully. ID: ${producer.id}`);
                     callback({ id: producer.id });
                 } catch (error) {
