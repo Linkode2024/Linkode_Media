@@ -426,11 +426,11 @@ async function runSocketServer() {
                     return;
                 }
 
-                if (memberStatus.isHarmfulAppDetected) {
-                    console.warn(`Harmful app detected for member: ${socket.memberId}`);
-                    callback({ error: 'Not allowed to produce due to harmful app detection' });
-                    return;
-                }            
+                // if (memberStatus.isHarmfulAppDetected) {
+                //     console.warn(`Harmful app detected for member: ${socket.memberId}`);
+                //     callback({ error: 'Not allowed to produce due to harmful app detection' });
+                //     return;
+                // }            
             
                 try {
                     const {kind, rtpParameters, isScreenShare, resolution, frameRate} = data;
@@ -455,6 +455,7 @@ async function runSocketServer() {
                     room.producers.set(producer.id, producer);
             
                     if (isScreenShare) {
+                        console.log("newScreen if 문 안으로 들어옴!!!!")
                         roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
                         socket.to(socket.studyroomId).emit('newScreenShare', {
                             memberId: socket.memberId,
