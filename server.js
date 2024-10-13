@@ -335,15 +335,30 @@ async function runSocketServer() {
             });
     
             socket.on('createConsumerTransport', async (data, callback) => {
-                if (!socket.studyroomId) {
+                console.log('createConsumerTransport called. Socket studyroomId:', socket.studyroomId);
+                console.log('Socket details:', {
+                    id: socket.id,
+                    studyroomId: socket.studyroomId,
+                    memberId: socket.memberId
+                });
+
+                console.log("createCOnsumerTransport 진입!!!!!")
+                try {
+                    if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
-                }
-                try {
+                    }
+
+                    if (typeof callback !== 'function') {
+                        console.error('createConsumerTransport 콜백 함수 아님');
+                        return;
+                    }
                     const room = roomManager.getRoom(socket.studyroomId);
+                    console.log("getRoom 성공!!!!!")
                     const { transport, params } = await createWebRtcTransport(room.router);
                     socket.consumerTransport = transport;
                     callback(params);
+                    console.log("params : ", params);
                     console.log('callback 완료!!!!');
                 } catch (err) {
                     console.error('Error creating consumer transport:', err);
@@ -395,9 +410,18 @@ async function runSocketServer() {
             });
     
             socket.on('connectConsumerTransport', async (data, callback) => {
+                console.log('connectProducerTransport called. Socket ID:', socket.id);
+                console.log('Received data:', data);
+                console.log("connectConsumerTransport 진입 성공!!!!!!!!!!");
+                // 콜백이 함수인지 확인
+                if (typeof callback !== 'function') {
+                    console.error('connectConsumerTransport 콜백 함수 아님');
+                    return;
+                }
                 try {
                     await socket.consumerTransport.connect({ dtlsParameters: data.dtlsParameters });
                     callback();
+                    console.log("connectConsumerTransport 콜백 성공!");
                 } catch (error) {
                     console.error('Error connecting consumer transport:', error);
                     callback({ error: 'Failed to connect consumer transport' });
@@ -454,13 +478,23 @@ async function runSocketServer() {
             // });
     
             socket.on('consume', async (data, callback) => {
+                console.log("consume 진입!!!!!!!");
+
                 if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
                     return;
                 }
+
+                 // 콜백이 함수인지 확인
+                if (typeof callback !== 'function') {
+                    console.error('Callback is not a function');
+                    return;
+                }
+
                 try {
                     const room = roomManager.getRoom(socket.studyroomId);
                     const producer = room.producers.get(data.producerId);
+                    console.log("produce 아이디 : ", data.producerId);
                     if (!producer) {
                         callback({ error: 'Producer not found' });
                         return;
@@ -499,6 +533,8 @@ async function runSocketServer() {
                         producerPaused: consumer.producerPaused,
                         appData: producer.appData
                     });
+
+                    console.log("callback 완료!!!!!");
                 } catch (error) {
                     console.error('Error consuming:', error);
                     callback({ error: 'Failed to consume' });
@@ -506,9 +542,16 @@ async function runSocketServer() {
             });
     
             socket.on('resume', async (data, callback) => {
+                console.log("resume 시작!!!!!");
                 try {
+                     // 콜백이 함수인지 확인
+                    if (typeof callback !== 'function') {
+                        console.error('Callback is not a function');
+                        return;
+                    }
                     await socket.consumerTransport.resume();
                     callback();
+                    console.log("callback 완료!!!!");
                 } catch (error) {
                     console.error('Error resuming consumer:', error);
                     callback({ error: 'Failed to resume consumer' });
