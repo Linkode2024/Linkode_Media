@@ -65,9 +65,19 @@ jobs:
           sudo docker pull ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
       
           if sudo docker service ls | grep -q "my-app"; then
-            sudo docker service update --image ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest my-app
+          sudo docker service update --image ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest \
+                                     --publish-add published=9000,target=3000 \
+                                     my-app
           else
-            sudo docker service create --name my-app --replicas 2 -p 9000:3000 --update-parallelism 1 --update-delay 10s ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
+            sudo docker service create --name my-app \
+                                       --replicas 2 \
+                                       --publish published=9000,target=3000 \
+                                       --update-parallelism 1 \
+                                       --update-delay 10s \
+                                       ${{ secrets.DOCKER_HUB_USERNAME }}/${{ secrets.DOCKER_HUB_REPO_NAME }}:latest
           fi
-      
+    
           sudo docker image prune -f
+
+          sudo docker service ps my-app
+          sudo docker service logs --tail 20 my-app
