@@ -327,7 +327,7 @@ async function runSocketServer() {
                     socket.producerTransport = transport;
 
                     callback(params);
-                    console.log('callback 완료!!!!');
+                    console.log('크리에이트 프로듀서 callback 완료!!!!');
                 } catch (err) {
                     console.error('Error creating producer transport:', err);
                     callback({ error: 'Failed to create producer transport' });
@@ -359,7 +359,7 @@ async function runSocketServer() {
                     socket.consumerTransport = transport;
                     callback(params);
                     console.log("params : ", params);
-                    console.log('callback 완료!!!!');
+                    console.log('크리에이트 프로듀서 callback 완료!!!!');
                 } catch (err) {
                     console.error('Error creating consumer transport:', err);
                     callback({ error: 'Failed to create consumer transport' });
