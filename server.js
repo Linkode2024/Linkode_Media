@@ -410,21 +410,40 @@ async function runSocketServer() {
             });
     
             socket.on('connectConsumerTransport', async (data, callback) => {
-                console.log('connectProducerTransport called. Socket ID:', socket.id);
+                console.log('connectConsumerTransport called. Socket ID:', socket.id);
                 console.log('Received data:', data);
-                console.log("connectConsumerTransport 진입 성공!!!!!!!!!!");
-                // 콜백이 함수인지 확인
+                
                 if (typeof callback !== 'function') {
-                    console.error('connectConsumerTransport 콜백 함수 아님');
+                    console.error('connectConsumerTransport called without a valid callback');
                     return;
                 }
+            
+                if (!socket.consumerTransport) {
+                    console.error('Consumer transport not found for socket:', socket.id);
+                    callback({ error: 'Consumer transport not found' });
+                    return;
+                }
+            
+                if (!data || !data.dtlsParameters) {
+                    console.error('Invalid DTLS parameters received');
+                    callback({ error: 'Invalid DTLS parameters' });
+                    return;
+                }
+            
                 try {
+                    console.log('Attempting to connect consumer transport...');
                     await socket.consumerTransport.connect({ dtlsParameters: data.dtlsParameters });
-                    callback();
-                    console.log("connectConsumerTransport 콜백 성공!");
+                    
+                    console.log('Consumer transport connected successfully');
+                    
+                    socket.consumerTransport.on('connectionstatechange', (state) => {
+                        console.log('Consumer transport connection state changed to', state);
+                    });
+            
+                    callback({ success: true });
                 } catch (error) {
                     console.error('Error connecting consumer transport:', error);
-                    callback({ error: 'Failed to connect consumer transport' });
+                    callback({ error: 'Failed to connect consumer transport', details: error.message });
                 }
             });
     
