@@ -359,7 +359,7 @@ async function runSocketServer() {
                     socket.consumerTransport = transport;
                     callback(params);
                     console.log("params : ", params);
-                    console.log('크리에이트 프로듀서 callback 완료!!!!');
+                    console.log('크리에이트 컨슈머 callback 완료!!!!');
                 } catch (err) {
                     console.error('Error creating consumer transport:', err);
                     callback({ error: 'Failed to create consumer transport' });
@@ -398,7 +398,7 @@ async function runSocketServer() {
                     console.log('producerTransport successfully connected');
             
                     callback();
-                    console.log('Callback called without errors');
+                    console.log('connectProducerTransport 완료!!');
                 } catch (error) {
                     console.error('Error connecting producer transport:', error);
                     console.error('Error stack:', error.stack);
@@ -410,6 +410,7 @@ async function runSocketServer() {
             });
     
             socket.on('connectConsumerTransport', async (data, callback) => {
+                console.log("connectConsumerTransport 진입완료!!!!");
                 console.log('connectConsumerTransport called. Socket ID:', socket.id);
                 console.log('Received data:', data);
                 
@@ -441,60 +442,12 @@ async function runSocketServer() {
                     });
             
                     callback({ success: true });
+                    console.log('connectConsumerTransport 완료!!');
                 } catch (error) {
                     console.error('Error connecting consumer transport:', error);
                     callback({ error: 'Failed to connect consumer transport', details: error.message });
                 }
             });
-    
-            // socket.on('produce', async (data, callback) => {
-            //     console.log('Produce event received:', data);
-            //     // 콜백이 함수인지 확인
-            //     if (typeof callback !== 'function') {
-            //         console.error('Callback is not a function');
-            //         return;
-            //     }
-
-            //     const room = roomManager.getRoom(socket.studyroomId);
-            //     if (!room) {
-            //         console.error(`Room not found for studyroomId: ${socket.studyroomId}`);
-            //         callback({ error: 'Room not found' });
-            //         return;
-            //     }
-            
-            //     const memberStatus = room.getMemberStatus(socket.memberId);
-            //     if (!memberStatus || memberStatus.isHarmfulAppDetected) {
-            //         console.error(`Member status not found for memberId: ${socket.memberId}`);
-            //         callback({ error: 'Member status not found' });
-            //         return;
-            //     }
-
-            //     if (memberStatus.isHarmfulAppDetected) {
-            //         console.warn(`Harmful app detected for member: ${socket.memberId}`);
-            //         callback({ error: 'Not allowed to produce due to harmful app detection' });
-            //         return;
-            //     }            
-            
-            //     try {
-            //         const {kind, rtpParameters} = data;
-            //         console.log(`Attempting to produce ${kind} stream`);
-                    
-            //         if (!socket.producerTransport) {
-            //             console.error('Producer transport not found');
-            //             callback({ error: 'Producer transport not found' });
-            //             return;
-            //         }
-
-            //         const producer = await socket.producerTransport.produce({ kind, rtpParameters });
-            //         room.producers.set(producer.id, producer);
-
-            //         console.log(`Producer created successfully. ID: ${producer.id}`);
-            //         callback({ id: producer.id });
-            //     } catch (error) {
-            //         console.error('Error producing:', error);
-            //         callback({ error: 'Failed to produce' });
-            //     }
-            // });
     
             socket.on('consume', async (data, callback) => {
                 console.log("consume 진입!!!!!!!");
@@ -568,7 +521,9 @@ async function runSocketServer() {
                         console.error('Callback is not a function');
                         return;
                     }
-                    await socket.consumerTransport.resume();
+                    // await socket.consumerTransport.resume();
+                    await consume.resume();
+                    console.log(socket.consumerTransport);
                     callback();
                     console.log("callback 완료!!!!");
                 } catch (error) {
