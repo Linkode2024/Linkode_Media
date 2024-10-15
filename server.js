@@ -894,7 +894,8 @@ function checkIfHarmfulApp(appInfo) {
                             'TikTok',
                             'Steam',
                             'Epic Games',
-                            '유해앱1']; // 유해 앱 목록
+                            '유해앱1',
+                            'Discord']; // 유해 앱 목록
     return harmfulApps.includes(appInfo);
 }
   
