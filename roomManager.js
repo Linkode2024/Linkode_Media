@@ -6,6 +6,7 @@ class Room {
         this.members = new Map();
         this.activeScreenShare = null;
         this.producers = new Map();
+        this.consuemrs = new Map();
     }
 
     addMember(memberId, appInfo) {

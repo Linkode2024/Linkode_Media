@@ -486,7 +486,7 @@ async function runSocketServer() {
                         rtpCapabilities,
                         paused: producer.kind === 'video',
                     });
-
+                    room.consumers.set(consumer.id, consumer); 
                     consumer.on('transportclose', () => {
                         console.log('Transport closed for consumer');
                     });
@@ -516,16 +516,24 @@ async function runSocketServer() {
             socket.on('resume', async (data, callback) => {
                 console.log("resume 시작!!!!!");
                 try {
-                     // 콜백이 함수인지 확인
                     if (typeof callback !== 'function') {
                         console.error('Callback is not a function');
                         return;
                     }
-                    console.log('consumerTransport:', socket.consumerTransport);
-                    await socket.consumerTransport.resume();
-                    console.log(socket.consumerTransport);
+                    
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    if (!room) {
+                        throw new Error('Room not found');
+                    }
+            
+                    const consumer = room.consumers.get(data.consumerId);
+                    if (!consumer) {
+                        throw new Error('Consumer not found');
+                    }
+            
+                    await consumer.resume();
                     callback();
-                    console.log("callback 완료!!!!");
+                    console.log("resume 완료!!!!");
                 } catch (error) {
                     console.error('Error resuming consumer:', error);
                     callback({ error: 'Failed to resume consumer' });
