@@ -521,8 +521,7 @@ async function runSocketServer() {
                         console.error('Callback is not a function');
                         return;
                     }
-                    // await socket.consumerTransport.resume();
-                    await consume.resume();
+                    await socket.consumerTransport.resume();
                     console.log(socket.consumerTransport);
                     callback();
                     console.log("callback 완료!!!!");
