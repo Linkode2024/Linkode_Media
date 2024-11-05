@@ -658,6 +658,7 @@ async function runSocketServer() {
             }); 
 
             socket.on('sendAlarmToMember', (targetMemberId) => {
+                const studyroomId = socket.studyroomId;
                 console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
 
                 // 룸의 모든 소켓을 순회하여 targetMemberId를 가진 소켓을 찾습니다.
