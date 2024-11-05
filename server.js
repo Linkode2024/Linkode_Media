@@ -859,7 +859,8 @@ function checkIfHarmfulApp(appInfo) {
                             'Epic Games',
                             '유해앱1',
                             'Discord']; // 유해 앱 목록
-    return harmfulApps.includes(appInfo);
+    const appName = typeof appInfo === 'string' ? appInfo : appInfo.name;
+    return harmfulApps.includes(appName);
 }
   
 module.exports = {
