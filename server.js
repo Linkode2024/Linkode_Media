@@ -661,7 +661,7 @@ async function runSocketServer() {
                 console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
 
                 // 룸의 모든 소켓을 순회하여 targetMemberId를 가진 소켓을 찾습니다.
-                const roomSockets = socketServer.sockets.adapter.rooms.get(targetMemberId);
+                const roomSockets = socketServer.sockets.adapter.rooms.get(studyroomId);
                 if (roomSockets) {
                     for (const socketId of roomSockets) {
                         const targetSocket = socketServer.sockets.sockets.get(socketId);
