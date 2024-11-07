@@ -589,7 +589,8 @@ async function runSocketServer() {
                             screen: true, 
                             socketId: socket.id,
                             resolution,
-                            frameRate
+                            frameRate,
+                            muted: true
                         },
                         codecOptions: {
                             videoGoogleStartBitrate: 1000,
@@ -682,7 +683,11 @@ async function runSocketServer() {
                     const consumer = await socket.consumerTransport.consume({
                         producerId: data.producerId,
                         rtpCapabilities,
-                        paused: false // 화면 공유의 경우 초기에 일시 중지하지 않음
+                        paused: false,
+                        appData: {
+                            ...producer.appData,
+                            muted: true
+                        }
                     });
 
                     room.consumers.set(consumer.id, consumer);
