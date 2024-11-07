@@ -449,69 +449,69 @@ async function runSocketServer() {
                 }
             });
     
-            socket.on('consume', async (data, callback) => {
-                console.log("consume 진입!!!!!!!");
+            // socket.on('consume', async (data, callback) => {
+            //     console.log("consume 진입!!!!!!!");
 
-                if (!socket.studyroomId) {
-                    callback({ error: 'Not in a room' });
-                    return;
-                }
+            //     if (!socket.studyroomId) {
+            //         callback({ error: 'Not in a room' });
+            //         return;
+            //     }
 
-                 // 콜백이 함수인지 확인
-                if (typeof callback !== 'function') {
-                    console.error('Callback is not a function');
-                    return;
-                }
+            //      // 콜백이 함수인지 확인
+            //     if (typeof callback !== 'function') {
+            //         console.error('Callback is not a function');
+            //         return;
+            //     }
 
-                try {
-                    const room = roomManager.getRoom(socket.studyroomId);
-                    const producer = room.producers.get(data.producerId);
-                    console.log("produce 아이디 : ", data.producerId);
-                    if (!producer) {
-                        callback({ error: 'Producer not found' });
-                        return;
-                    }
+            //     try {
+            //         const room = roomManager.getRoom(socket.studyroomId);
+            //         const producer = room.producers.get(data.producerId);
+            //         console.log("produce 아이디 : ", data.producerId);
+            //         if (!producer) {
+            //             callback({ error: 'Producer not found' });
+            //             return;
+            //         }
     
-                    const rtpCapabilities = data.rtpCapabilities;
-                    if (!room.router.canConsume({
-                        producerId: data.producerId,
-                        rtpCapabilities,
-                    })) {
-                        callback({ error: 'Cannot consume' });
-                        return;
-                    }
+            //         const rtpCapabilities = data.rtpCapabilities;
+            //         if (!room.router.canConsume({
+            //             producerId: data.producerId,
+            //             rtpCapabilities,
+            //         })) {
+            //             callback({ error: 'Cannot consume' });
+            //             return;
+            //         }
     
-                    const consumer = await socket.consumerTransport.consume({
-                        producerId: data.producerId,
-                        rtpCapabilities,
-                        paused: producer.kind === 'video',
-                    });
-                    room.consumers.set(consumer.id, consumer); 
-                    consumer.on('transportclose', () => {
-                        console.log('Transport closed for consumer');
-                    });
+            //         const consumer = await socket.consumerTransport.consume({
+            //             producerId: data.producerId,
+            //             rtpCapabilities,
+            //             paused: producer.kind === 'video',
+            //         });
+            //         room.consumers.set(consumer.id, consumer); 
+            //         consumer.on('transportclose', () => {
+            //             console.log('Transport closed for consumer');
+            //         });
 
-                    consumer.on('producerclose', () => {
-                        console.log('Producer closed for consumer');
-                        socket.emit('consumerClosed', { consumerId: consumer.id });
-                    });
+            //         consumer.on('producerclose', () => {
+            //             console.log('Producer closed for consumer');
+            //             socket.emit('consumerClosed', { consumerId: consumer.id });
+            //         });
     
-                    callback({
-                        producerId: data.producerId,
-                        id: consumer.id,
-                        kind: consumer.kind,
-                        rtpParameters: consumer.rtpParameters,
-                        type: consumer.type,
-                        producerPaused: consumer.producerPaused,
-                        appData: producer.appData
-                    });
+            //         callback({
+            //             producerId: data.producerId,
+            //             id: consumer.id,
+            //             kind: consumer.kind,
+            //             rtpParameters: consumer.rtpParameters,
+            //             type: consumer.type,
+            //             producerPaused: consumer.producerPaused,
+            //             appData: producer.appData
+            //         });
 
-                    console.log("callback 완료!!!!!");
-                } catch (error) {
-                    console.error('Error consuming:', error);
-                    callback({ error: 'Failed to consume' });
-                }
-            });
+            //         console.log("callback 완료!!!!!");
+            //     } catch (error) {
+            //         console.error('Error consuming:', error);
+            //         callback({ error: 'Failed to consume' });
+            //     }
+            // });
     
             socket.on('resume', async (data, callback) => {
                 console.log("resume 시작!!!!!");
@@ -540,16 +540,16 @@ async function runSocketServer() {
                 }
             });
 
-            // 유해앱 화면 공유
+            // startScreenShare 이벤트 핸들러 수정
             socket.on('startScreenShare', async (data, callback) => {
-                console.log("스크린쉐어 진입!")
+                console.log("스크린쉐어 진입!");
                 if (!socket.studyroomId) {
                     if (typeof callback === 'function') {
-                        console.error('Callback is not a function');
+                        callback({ error: 'Not in a room' });
                     }
                     return;
                 }
-                console.log("callback function 통과")
+                
                 try {
                     console.log('스크린 쉐어에서 받은 데이터 :', data);
                     const { rtpParameters, resolution, frameRate } = data;
@@ -559,21 +559,29 @@ async function runSocketServer() {
                         throw new Error('Room not found');
                     }
                     
-                    // 유저가 이미 화면 공유 중인지 확인
+                    // 기존 화면 공유 확인 및 처리
                     const activeShare = roomManager.getActiveScreenShare(socket.studyroomId);
                     if (activeShare) {
-                        if (activeShare.memberId === socket.memberId) {
-                            throw new Error('Already sharing screen');
-                        } else {
-                            throw new Error('Another user is already sharing screen');
+                        // 기존 화면 공유 중단
+                        const oldProducer = room.producers.get(activeShare.producerId);
+                        if (oldProducer) {
+                            await oldProducer.close();
+                            room.producers.delete(activeShare.producerId);
                         }
+                        roomManager.stopScreenShare(socket.studyroomId);
+                        
+                        // 다른 사용자들에게 기존 화면 공유 중단 알림
+                        socket.to(socket.studyroomId).emit('screenShareStopped', {
+                            memberId: activeShare.memberId,
+                            producerId: activeShare.producerId
+                        });
                     }
-            
+
                     if (!socket.producerTransport) {
                         throw new Error('Producer transport not set up');
                     }
-            
-                    // 새로운 producer 생성 
+
+                    // 새로운 producer 생성
                     const producer = await socket.producerTransport.produce({
                         kind: 'video',
                         rtpParameters,
@@ -584,14 +592,28 @@ async function runSocketServer() {
                             frameRate
                         }
                     });
+                    
                     console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
                     room.producers.set(producer.id, producer);
                     roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
-            
+
+                    // 프로듀서 이벤트 핸들러 추가
+                    producer.on('transportclose', () => {
+                        console.log('Screen share producer transport closed');
+                        room.producers.delete(producer.id);
+                        roomManager.stopScreenShare(socket.studyroomId);
+                    });
+
+                    producer.on('close', () => {
+                        console.log('Screen share producer closed');
+                        room.producers.delete(producer.id);
+                        roomManager.stopScreenShare(socket.studyroomId);
+                    });
+
                     if (typeof callback === 'function') {
                         callback({ id: producer.id });
                     }
-            
+
                     // 스터디룸의 다른 사용자에게 화면 공유 알림
                     socket.to(socket.studyroomId).emit('newScreenShare', {
                         memberId: socket.memberId,
@@ -609,6 +631,91 @@ async function runSocketServer() {
                 }
             });
 
+            // consume 이벤트 핸들러 수정
+            socket.on('consume', async (data, callback) => {
+                console.log("consume 진입!!!!!!!");
+                console.log("Consume data:", data);
+
+                if (!socket.studyroomId) {
+                    callback({ error: 'Not in a room' });
+                    return;
+                }
+
+                if (typeof callback !== 'function') {
+                    console.error('Callback is not a function');
+                    return;
+                }
+
+                try {
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    const producer = room.producers.get(data.producerId);
+                    console.log("Producer ID:", data.producerId);
+                    console.log("Found producer:", producer ? "yes" : "no");
+                    
+                    if (!producer) {
+                        console.error('Producer not found:', data.producerId);
+                        callback({ error: 'Producer not found' });
+                        return;
+                    }
+
+                    const rtpCapabilities = data.rtpCapabilities;
+                    if (!room.router.canConsume({
+                        producerId: data.producerId,
+                        rtpCapabilities,
+                    })) {
+                        console.error('Cannot consume with given rtpCapabilities');
+                        callback({ error: 'Cannot consume' });
+                        return;
+                    }
+
+                    const consumer = await socket.consumerTransport.consume({
+                        producerId: data.producerId,
+                        rtpCapabilities,
+                        paused: false // 화면 공유의 경우 초기에 일시 중지하지 않음
+                    });
+
+                    room.consumers.set(consumer.id, consumer);
+
+                    // 컨슈머 이벤트 핸들러
+                    consumer.on('transportclose', () => {
+                        console.log('Transport closed for consumer');
+                        room.consumers.delete(consumer.id);
+                    });
+
+                    consumer.on('producerclose', () => {
+                        console.log('Producer closed for consumer');
+                        room.consumers.delete(consumer.id);
+                        socket.emit('consumerClosed', { consumerId: consumer.id });
+                    });
+
+                    // 스트림 정보 로깅
+                    console.log('Created consumer:', {
+                        id: consumer.id,
+                        kind: consumer.kind,
+                        type: consumer.type,
+                        producerPaused: consumer.producerPaused
+                    });
+
+                    callback({
+                        producerId: data.producerId,
+                        id: consumer.id,
+                        kind: consumer.kind,
+                        rtpParameters: consumer.rtpParameters,
+                        type: consumer.type,
+                        producerPaused: consumer.producerPaused,
+                        appData: producer.appData
+                    });
+
+                    // 바로 재생 시작
+                    await consumer.resume();
+                    console.log("Consumer resumed automatically");
+
+                    console.log("Consume callback completed successfully");
+                } catch (error) {
+                    console.error('Error in consume:', error);
+                    callback({ error: 'Failed to consume: ' + error.message });
+                }
+            });
             socket.on('stopScreenShare', async (callback) => {
                 if (!socket.studyroomId) {
                     callback({ error: 'Not in a room' });
