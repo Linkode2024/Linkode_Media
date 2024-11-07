@@ -590,7 +590,18 @@ async function runSocketServer() {
                             socketId: socket.id,
                             resolution,
                             frameRate
-                        }
+                        },
+                        codecOptions: {
+                            videoGoogleStartBitrate: 1000,
+                            videoGoogleMaxBitrate: 3000,
+                            videoGoogleMinBitrate: 100
+                        },
+                        encodings: [
+                            {
+                                maxBitrate: 3000000,
+                                scalabilityMode: 'S1T3'
+                            }
+                        ]
                     });
                     
                     console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
