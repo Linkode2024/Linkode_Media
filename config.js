@@ -67,7 +67,7 @@ module.exports = {
       listenIps: [
         {
           ip: '0.0.0.0',
-          announcedIp: '3.34.193.132',
+          announcedIp: '3.34.193.132',  // 현재 설정된 공인 IP
         }
       ],
       maxIncomingBitrate: 1500000,
@@ -78,23 +78,44 @@ module.exports = {
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
+      // STUN/ICE 서버 설정 확장
+      iceServers: [
+        { urls: 'stun:stun.l.google.com:19302' },
+        { urls: 'stun:stun1.l.google.com:19302' },
+        { urls: 'stun:stun2.l.google.com:19302' },
+        { urls: 'stun:stun3.l.google.com:19302' }
+      ],
+      // ICE 관련 추가 설정
+      enableSctp: true,
+      numSctpStreams: { OS: 1024, MIS: 1024 },
+      isDataChannel: true,
+      // 타임아웃 설정
+      iceTransportPolicy: 'all',
+      iceServersTimeout: 5000,
+      // 재연결 설정
+      retry: {
+        maxRetries: 5,
+        factor: 2,
+        minTimeout: 1000,
+        maxTimeout: 8000
+      }
+    },
+    // Screen sharing specific settings
+    screenSharing: {
+      maxFps: 30,
+      minBitrate: 1000000,
+      maxBitrate: 5000000
+    },
+    // Room settings
+    room: {
+      maxParticipants: 6
+    },
+    // Harmful app detection settings
+    harmfulApps: ['유해앱1', '유해앱2', '유해앱3'],
+    // Timeout settings
+    timeouts: {
+      disconnectTimeout: 10000, // 10 seconds
+      inactivityTimeout: 300000 // 5 minutes
     }
-  },
-  // Screen sharing specific settings
-  screenSharing: {
-    maxFps: 30,
-    minBitrate: 1000000,
-    maxBitrate: 5000000
-  },
-  // Room settings
-  room: {
-    maxParticipants: 6
-  },
-  // Harmful app detection settings
-  harmfulApps: ['유해앱1', '유해앱2', '유해앱3'],
-  // Timeout settings
-  timeouts: {
-    disconnectTimeout: 10000, // 10 seconds
-    inactivityTimeout: 300000 // 5 minutes
   }
 };

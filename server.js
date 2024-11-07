@@ -837,7 +837,11 @@ async function createWebRtcTransport(router) {
             enableUdp: true,
             enableTcp: true,
             preferUdp: true,
-            initialAvailableOutgoingBitrate,
+            initialAvailableOutgoingBitrate: 1000000,
+            enableSctp: true,
+            numSctpStreams: { OS: 1024, MIS: 1024 },
+            maxSctpMessageSize: 262144,
+            isDataChannel: true  // 데이터 채널 활성화
         });
 
         console.log('WebRTC Transport created successfully:', {
