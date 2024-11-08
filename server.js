@@ -821,12 +821,30 @@ async function runSocketServer() {
 }
 async function runMediasoupWorker() {
     worker = await mediasoup.createWorker({
-        logLevel: config.mediasoup.worker.logLevel,
-        logTags: config.mediasoup.worker.logTags,
-        rtcMinPort: config.mediasoup.worker.rtcMinPort,
-        rtcMaxPort: config.mediasoup.worker.rtcMaxPort,
+        logLevel: 'debug',
+        logTags: [
+            'info',
+            'ice',
+            'dtls',
+            'rtp',
+            'srtp',
+            'rtcp',
+            'rtx',
+            'bwe',
+            'score',
+            'simulcast',
+            'svc',
+            'sctp'
+        ],
+        rtcMinPort: 10000,
+        rtcMaxPort: 10100,
+        dtlsOptions: {
+            maxRetransmissions: 10,
+            retransmissionTimeout: 2000
+        }
     });
 
+    // Worker 이벤트 핸들링
     worker.on('died', () => {
         console.error('mediasoup worker died, exiting in 2 seconds... [pid:%d]', worker.pid);
         setTimeout(() => process.exit(1), 2000);
