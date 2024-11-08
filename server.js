@@ -833,18 +833,21 @@ async function runMediasoupWorker() {
     });
 }
 
+// createWebRtcTransport 함수 수정
 async function createWebRtcTransport(router) {
-    console.log('Creating WebRTC Transport');
+    const transportId = Math.random().toString(36).substr(2, 9);
+    console.log(`[Transport ${transportId}] Creating new WebRTC Transport`);
     
     const {
         maxIncomingBitrate,
-        initialAvailableOutgoingBitrate
+        initialAvailableOutgoingBitrate,
+        listenIps
     } = config.mediasoup.webRtcTransport;
 
-    console.log('Transport configuration:', {
+    console.log(`[Transport ${transportId}] Configuration:`, {
+        listenIps,
         maxIncomingBitrate,
-        initialAvailableOutgoingBitrate,
-        listenIps: config.mediasoup.webRtcTransport.listenIps
+        initialAvailableOutgoingBitrate
     });
 
     try {
@@ -856,25 +859,69 @@ async function createWebRtcTransport(router) {
             initialAvailableOutgoingBitrate: 1000000,
             enableSctp: true,
             numSctpStreams: { OS: 1024, MIS: 1024 },
-            maxSctpMessageSize: 262144,
-            isDataChannel: true  // 데이터 채널 활성화
+            maxSctpMessageSize: 262144
         });
 
-        console.log('WebRTC Transport created successfully:', {
-            id: transport.id,
-            iceParameters: transport.iceParameters,
-            iceCandidates: transport.iceCandidates,
-            dtlsParameters: transport.dtlsParameters
+        // Transport 이벤트 리스너 추가
+        transport.on('connect', ({ dtlsParameters }, callback, errback) => {
+            console.log(`[Transport ${transport.id}] Connect event:`, {
+                dtlsParameters,
+                iceState: transport.iceState,
+                dtlsState: transport.dtlsState
+            });
+            callback();
+        });
+
+        transport.on('connectionstatechange', (state) => {
+            console.log(`[Transport ${transport.id}] Connection state changed to ${state}`);
+            // 상세 상태 로깅
+            if (state === 'failed' || state === 'disconnected') {
+                console.error(`[Transport ${transport.id}] Connection issues detected:`, {
+                    iceState: transport.iceState,
+                    dtlsState: transport.dtlsState,
+                    sctpState: transport.sctpState,
+                    bytesReceived: transport.bytesReceived,
+                    bytesSent: transport.bytesSent,
+                    recvBitrate: transport.recvBitrate,
+                    sendBitrate: transport.sendBitrate,
+                    timestamp: new Date().toISOString()
+                });
+            }
+        });
+
+        // ICE/DTLS 상태 모니터링
+        const monitorTransportState = () => {
+            const stats = {
+                iceState: transport.iceState,
+                dtlsState: transport.dtlsState,
+                sctpState: transport.sctpState,
+                bytesReceived: transport.bytesReceived,
+                bytesSent: transport.bytesSent
+            };
+            console.log(`[Transport ${transport.id}] Current state:`, stats);
+        };
+
+        // 5초마다 상태 체크
+        const stateMonitorInterval = setInterval(monitorTransportState, 5000);
+        
+        transport.on('close', () => {
+            console.log(`[Transport ${transport.id}] Transport closed`);
+            clearInterval(stateMonitorInterval);
         });
 
         if (maxIncomingBitrate) {
             try {
                 await transport.setMaxIncomingBitrate(maxIncomingBitrate);
-                console.log(`Max incoming bitrate set to ${maxIncomingBitrate}`);
+                console.log(`[Transport ${transport.id}] Max incoming bitrate set to ${maxIncomingBitrate}`);
             } catch (error) {
-                console.error('Error setting max incoming bitrate:', error);
+                console.error(`[Transport ${transport.id}] Error setting max incoming bitrate:`, error);
             }
         }
+
+        // SCTP 상태 모니터링 (데이터 채널용)
+        transport.on('sctpstatechange', (sctpState) => {
+            console.log(`[Transport ${transport.id}] SCTP state changed to ${sctpState}`);
+        });
 
         const returnParams = {
             transport,
@@ -882,15 +929,38 @@ async function createWebRtcTransport(router) {
                 id: transport.id,
                 iceParameters: transport.iceParameters,
                 iceCandidates: transport.iceCandidates,
-                dtlsParameters: transport.dtlsParameters
+                dtlsParameters: transport.dtlsParameters,
+                sctpParameters: transport.sctpParameters
             },
         };
 
-        console.log('Returning transport parameters:', returnParams.params);
+        console.log(`[Transport ${transport.id}] Created with parameters:`, returnParams.params);
+
+        // 연결 품질 모니터링
+        const monitorConnectionQuality = async () => {
+            try {
+                const stats = await transport.getStats();
+                const relevantStats = stats.filter(stat => 
+                    stat.type === 'candidate-pair' || 
+                    stat.type === 'transport'
+                );
+                console.log(`[Transport ${transport.id}] Connection quality stats:`, relevantStats);
+            } catch (error) {
+                console.error(`[Transport ${transport.id}] Failed to get connection stats:`, error);
+            }
+        };
+
+        // 10초마다 연결 품질 체크
+        const qualityMonitorInterval = setInterval(monitorConnectionQuality, 10000);
+        
+        transport.on('close', () => {
+            clearInterval(qualityMonitorInterval);
+        });
 
         return returnParams;
     } catch (error) {
-        console.error('Error creating WebRTC Transport:', error);
+        console.error(`[Transport create] Error creating WebRTC Transport:`, error);
+        console.error('Stack trace:', error.stack);
         throw error;
     }
 }
