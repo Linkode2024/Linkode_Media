@@ -859,7 +859,12 @@ async function createWebRtcTransport(router) {
             initialAvailableOutgoingBitrate: 1000000,
             enableSctp: true,
             numSctpStreams: { OS: 1024, MIS: 1024 },
-            maxSctpMessageSize: 262144
+            maxSctpMessageSize: 262144,
+            // 추가할 설정
+            enableIceUdpMux: true, // UDP multiplexing 활성화
+            iceServers: [          // STUN/TURN 서버 추가
+                { urls: ['stun:stun.l.google.com:19302'] }
+            ]
         });
 
         // Transport 이벤트 리스너 추가
