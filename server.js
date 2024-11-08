@@ -960,25 +960,35 @@ async function createWebRtcTransport(router) {
         console.log(`[Transport ${transport.id}] Created with parameters:`, returnParams.params);
 
         // 연결 품질 모니터링
-        const monitorConnectionQuality = async () => {
+        const monitorConnectionQuality = async (transport) => {
             try {
-                const stats = await transport.getStats();
-                const relevantStats = stats.filter(stat => 
-                    stat.type === 'candidate-pair' || 
-                    stat.type === 'transport'
-                );
-                console.log(`[Transport ${transport.id}] Connection quality stats:`, relevantStats);
+            // 트랜스포트 객체가 유효한지 확인
+            if (transport.closed) {
+                console.log(`[Transport ${transport.id}] Skipping connection quality check, transport is closed`);
+                return;
+            }
+        
+            const stats = await transport.getStats();
+            const relevantStats = stats.filter(stat => 
+                stat.type === 'candidate-pair' || 
+                stat.type === 'transport'
+            );
+            console.log(`[Transport ${transport.id}] Connection quality stats:`, relevantStats);
             } catch (error) {
-                console.error(`[Transport ${transport.id}] Failed to get connection stats:`, error);
+            // 오류 발생 시 로그를 남기고 넘어가기
+            console.error(`[Transport ${transport.id}] Failed to get connection stats:`, error);
             }
         };
-
-        // 10초마다 연결 품질 체크
-        const qualityMonitorInterval = setInterval(monitorConnectionQuality, 10000);
-        
-        transport.on('close', () => {
-            clearInterval(qualityMonitorInterval);
-        });
+  
+  // 10초마다 연결 품질 체크
+  const qualityMonitorInterval = setInterval(() => {
+    monitorConnectionQuality(transport);
+  }, 10000);
+  
+  // 트랜스포트 객체가 닫힐 때 모니터링 중지
+  transport.on('close', () => {
+    clearInterval(qualityMonitorInterval);
+  });
 
         return returnParams;
     } catch (error) {
