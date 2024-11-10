@@ -1,3 +1,4 @@
+require('dotenv').config();
 const mediasoup = require('mediasoup');
 const fs = require('fs');
 const http = require('http');
@@ -880,9 +881,19 @@ async function createWebRtcTransport(router) {
             maxSctpMessageSize: 262144,
             // 추가할 설정
             enableIceUdpMux: true, // UDP multiplexing 활성화
-            iceServers: [          // STUN/TURN 서버 추가
-                { urls: ['stun:stun.l.google.com:19302'] }
-            ]
+            iceServers: [
+                { urls: ['stun:stun.l.google.com:19302'] },
+                {
+                    urls: ['turn:3.34.193.132:3478'],
+                    username: process.env.TURN_SERVER_USERNAME,
+                    credential: process.env.TURN_SERVER_CREDENTIAL
+                }
+            ],
+            additionalSettings: {
+                iceTransportPolicy: 'all',
+                bundlePolicy: 'max-bundle',
+                rtcpMuxPolicy: 'require'
+            }
         });
 
         // Transport 이벤트 리스너 추가
