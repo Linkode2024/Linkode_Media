@@ -866,7 +866,26 @@ async function createWebRtcTransport(router) {
     console.log(`[Transport ${transportId}] Configuration:`, {
         listenIps,
         maxIncomingBitrate,
-        initialAvailableOutgoingBitrate
+        initialAvailableOutgoingBitrate,
+        iceServers: [
+            { 
+                urls: [
+                    'stun:stun.l.google.com:19302',
+                    'stun:stun1.l.google.com:19302',
+                    'stun:stun2.l.google.com:19302'
+                ]
+            },
+            {
+                urls: ['turn:3.34.193.132:3478?transport=udp', 'turn:3.34.193.132:3478?transport=tcp'],
+                username: process.env.TURN_SERVER_USERNAME,
+                credential: process.env.TURN_SERVER_CREDENTIAL
+            }
+        ],
+        additionalSettings: {
+            iceTransportPolicy: 'all',
+            bundlePolicy: 'max-bundle',
+            rtcpMuxPolicy: 'require'
+        }
     });
 
     try {
@@ -903,6 +922,28 @@ async function createWebRtcTransport(router) {
                 iceCandidatePoolSize: 10,
                 iceServersTransportPolicy: 'all'
             }
+        });
+
+        // Add listeners for ICE state changes
+        transport.on('icestatechange', (state) => {
+            console.log(`[Transport ${transport.id}] ICE state changed to ${state}`);
+    
+            // If ICE state is 'checking', re-create the offer and send it to the remote peer
+            if (state === 'checking') {
+            transport.produceOffer().then((offer) => {
+                console.log(`[Transport ${transport.id}] New offer created: ${JSON.stringify(offer)}`);
+                transport.setLocalDescription(offer);
+                sendOfferToRemotePeer(offer);
+            }).catch((error) => {
+                console.error(`[Transport ${transport.id}] Error creating new offer:`, error);
+            });
+            }
+        });
+  
+        // Add listeners for ICE candidate gathering
+        transport.on('icecandidate', (candidate) => {
+            console.log(`[Transport ${transport.id}] New ICE candidate:`, candidate);
+            sendIceCandidateToRemotePeer(candidate);
         });
 
         // Transport 이벤트 리스너 추가
@@ -945,7 +986,7 @@ async function createWebRtcTransport(router) {
         };
 
         // 5초마다 상태 체크
-        const stateMonitorInterval = setInterval(monitorTransportState, 5000);
+        const stateMonitorInterval = setInterval(monitorTransportState, 20000);
         
         transport.on('close', () => {
             console.log(`[Transport ${transport.id}] Transport closed`);
