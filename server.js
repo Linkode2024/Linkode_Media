@@ -882,17 +882,26 @@ async function createWebRtcTransport(router) {
             // 추가할 설정
             enableIceUdpMux: true, // UDP multiplexing 활성화
             iceServers: [
-                { urls: ['stun:stun.l.google.com:19302'] },
+                { 
+                    urls: [
+                        'stun:stun.l.google.com:19302',
+                        'stun:stun1.l.google.com:19302',
+                        'stun:stun2.l.google.com:19302'
+                    ]
+                },
                 {
-                    urls: ['turn:3.34.193.132:3478'],
+                    urls: ['turn:3.34.193.132:3478?transport=udp', 'turn:3.34.193.132:3478?transport=tcp'],
                     username: process.env.TURN_SERVER_USERNAME,
                     credential: process.env.TURN_SERVER_CREDENTIAL
                 }
             ],
+            // NAT 관련 설정 추가
             additionalSettings: {
                 iceTransportPolicy: 'all',
                 bundlePolicy: 'max-bundle',
-                rtcpMuxPolicy: 'require'
+                rtcpMuxPolicy: 'require',
+                iceCandidatePoolSize: 10,
+                iceServersTransportPolicy: 'all'
             }
         });
 
