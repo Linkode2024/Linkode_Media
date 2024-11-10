@@ -83,7 +83,16 @@ module.exports = {
         { urls: 'stun:stun.l.google.com:19302' },
         { urls: 'stun:stun1.l.google.com:19302' },
         { urls: 'stun:stun2.l.google.com:19302' },
-        { urls: 'stun:stun3.l.google.com:19302' }
+        { urls: 'stun:stun3.l.google.com:19302' },
+        // TURN 서버 추가
+        {
+            urls: [
+                'turn:3.34.193.132:3478?transport=udp',
+                'turn:3.34.193.132:3478?transport=tcp'
+            ],
+            username: process.env.TURN_SERVER_USERNAME,
+            credential: process.env.TURN_SERVER_CREDENTIAL
+        }
       ],
       // ICE 관련 추가 설정
       enableSctp: true,
@@ -92,6 +101,13 @@ module.exports = {
       // 타임아웃 설정
       iceTransportPolicy: 'all',
       iceServersTimeout: 5000,
+      // NAT 통과 설정 추가
+      additionalSettings: {
+      iceServersTransportPolicy: 'all',
+      bundlePolicy: 'max-bundle',
+      rtcpMuxPolicy: 'require',
+      iceCandidatePoolSize: 10
+      },
       // 재연결 설정
       retry: {
         maxRetries: 5,
