@@ -6,8 +6,8 @@ module.exports = {
   mediasoup: {
     // Worker settings
     worker: {
-      rtcMinPort: 10000,
-      rtcMaxPort: 10100,
+      rtcMinPort: 49152,
+      rtcMaxPort: 65535,
       logLevel: 'warn',
       logTags: [
         'info',
@@ -78,6 +78,7 @@ module.exports = {
       enableUdp: true,
       enableTcp: true,
       preferUdp: true,
+      enableSctp: true,
       // STUN/ICE 서버 설정 확장
       iceServers: [
         { urls: 'stun:stun.l.google.com:19302' },
