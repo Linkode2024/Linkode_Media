@@ -229,7 +229,7 @@ async function runSocketServer() {
             socket.emit('roomJoined', {
                 studyroomId,
                 members: roomManager.getRoomMembersWithAppUsage(studyroomId),
-                rtpCapabilities: room.router.rtpCapabilities
+                rtpCapabilities: room?.router?.rtpCapabilities || null
             });
 
             // 브로드캐스트
@@ -836,17 +836,28 @@ async function createWebRtcTransport(router, socket) {
     }
   }
   
-  
-async function joinRoom(socket, studyroomId, memberId, appInfo) {
+  async function joinRoom(socket, studyroomId, memberId, appInfo) {
     console.log(`User ${memberId} joined study room ${studyroomId} with app info:`, appInfo);
     
     let room = roomManager.getRoom(studyroomId);
     if (!room) {
+        if (!worker) {
+            throw new Error('Mediasoup worker not initialized');
+        }
         // Create a new room
         room = roomManager.createRoom(studyroomId);
-        room.router = await worker.createRouter({ mediaCodecs: config.mediasoup.router.mediaCodecs });
-        room.producers = new Map();
-        room.consumers = new Map();
+        console.log('Creating router with mediaCodecs:', config.mediasoup.router.mediaCodecs);
+        try {
+            room.router = await worker.createRouter({ 
+                mediaCodecs: config.mediasoup.router.mediaCodecs 
+            });
+            console.log('Router created successfully');
+            room.producers = new Map();
+            room.consumers = new Map();
+        } catch (error) {
+            console.error('Failed to create router:', error);
+            throw error;
+        }
     }
 
     roomManager.joinRoom(studyroomId, memberId, appInfo);
