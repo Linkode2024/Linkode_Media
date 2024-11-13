@@ -8,7 +8,7 @@ module.exports = {
     worker: {
       rtcMinPort: 49152,
       rtcMaxPort: 65535,
-      logLevel: 'debug',
+      logLevel: 'debug', 
       logTags: [
         'info',
         'ice',
@@ -136,3 +136,5 @@ module.exports = {
     }
   }
 };
+
+

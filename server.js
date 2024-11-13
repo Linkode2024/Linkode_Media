@@ -324,14 +324,8 @@ async function runSocketServer() {
                     callback(params);
                     console.log('크리에이트 프로듀서 callback 완료!!!!');
                 } catch (err) {
-                    const errorDetails = {
-                        error: 'Failed to create producer transport',
-                        code: err.code || 500,
-                        details: err.message,
-                        timestamp: new Date().toISOString()
-                    };
-                    console.error('Error creating producer transport:', errorDetails);
-                    callback(errorDetails);
+                    console.error('Error creating producer transport:', err);
+                    callback({ error: 'Failed to create producer transport' });
                 }
             });
             
@@ -358,87 +352,105 @@ async function runSocketServer() {
             });
     
             socket.on('connectProducerTransport', async (data, callback) => {
-                console.log('connectProducerTransport called. Socket ID:', socket.id);
-                console.log('Received data:', data);
-            
-                // 콜백이 함수인지 확인
-                if (typeof callback !== 'function') {
-                    console.error('connectProducerTransport called without a valid callback');
-                    return;
-                }
-            
                 try {
-                    console.log('Checking if producerTransport exists...');
-                    if (!socket.producerTransport) {
-                        console.error('producerTransport does not exist for this socket');
-                        callback({ error: 'Producer transport not found' });
-                        return;
-                    }
-            
-                    console.log('producerTransport exists. Checking DTLS parameters...');
-                    if (!data || !data.dtlsParameters) {
-                        console.error('DTLS parameters are missing');
-                        callback({ error: 'DTLS parameters are missing' });
-                        return;
-                    }
-            
-                    console.log('DTLS parameters received:', data.dtlsParameters);
-            
-                    await socket.producerTransport.connect({ dtlsParameters: data.dtlsParameters });
-                    
-                    console.log('producerTransport successfully connected');
-            
-                    callback();
-                    console.log('connectProducerTransport 완료!!');
+                  if (!socket.producerTransport) {
+                    throw new Error('Producer transport not found');
+                  }
+              
+                  await socket.producerTransport.connect({
+                    dtlsParameters: data.dtlsParameters
+                  });
+                  
+                  console.log('Producer transport connected successfully');
+                  callback();
                 } catch (error) {
-                    console.error('Error connecting producer transport:', error);
-                    console.error('Error stack:', error.stack);
-                    console.log('Attempting to call callback with error');
-                    callback({ error: 'Failed to connect producer transport', details: error.message });
+                  console.error('Error connecting producer transport:', error);
+                  callback({ error: error.message });
                 }
-            
-                console.log('connectProducerTransport handler completed');
-            });
+              });
+              
+              socket.on('connectConsumerTransport', async (data, callback) => {
+                try {
+                  if (!socket.consumerTransport) {
+                    throw new Error('Consumer transport not found');
+                  }
+              
+                  await socket.consumerTransport.connect({
+                    dtlsParameters: data.dtlsParameters
+                  });
+              
+                  console.log('Consumer transport connected successfully');
+                  callback();
+                } catch (error) {
+                  console.error('Error connecting consumer transport:', error);
+                  callback({ error: error.message });
+                }
+              });
     
-            socket.on('connectConsumerTransport', async (data, callback) => {
-                console.log("connectConsumerTransport 진입완료!!!!");
-                console.log('connectConsumerTransport called. Socket ID:', socket.id);
-                console.log('Received data:', data);
-                
-                if (typeof callback !== 'function') {
-                    console.error('connectConsumerTransport called without a valid callback');
-                    return;
-                }
+            // socket.on('consume', async (data, callback) => {
+            //     console.log("consume 진입!!!!!!!");
+
+            //     if (!socket.studyroomId) {
+            //         callback({ error: 'Not in a room' });
+            //         return;
+            //     }
+
+            //      // 콜백이 함수인지 확인
+            //     if (typeof callback !== 'function') {
+            //         console.error('Callback is not a function');
+            //         return;
+            //     }
+
+            //     try {
+            //         const room = roomManager.getRoom(socket.studyroomId);
+            //         const producer = room.producers.get(data.producerId);
+            //         console.log("produce 아이디 : ", data.producerId);
+            //         if (!producer) {
+            //             callback({ error: 'Producer not found' });
+            //             return;
+            //         }
+    
+            //         const rtpCapabilities = data.rtpCapabilities;
+            //         if (!room.router.canConsume({
+            //             producerId: data.producerId,
+            //             rtpCapabilities,
+            //         })) {
+            //             callback({ error: 'Cannot consume' });
+            //             return;
+            //         }
+    
+            //         const consumer = await socket.consumerTransport.consume({
+            //             producerId: data.producerId,
+            //             rtpCapabilities,
+            //             paused: producer.kind === 'video',
+            //         });
+            //         room.consumers.set(consumer.id, consumer); 
+            //         consumer.on('transportclose', () => {
+            //             console.log('Transport closed for consumer');
+            //         });
+
+            //         consumer.on('producerclose', () => {
+            //             console.log('Producer closed for consumer');
+            //             socket.emit('consumerClosed', { consumerId: consumer.id });
+            //         });
+    
+            //         callback({
+            //             producerId: data.producerId,
+            //             id: consumer.id,
+            //             kind: consumer.kind,
+            //             rtpParameters: consumer.rtpParameters,
+            //             type: consumer.type,
+            //             producerPaused: consumer.producerPaused,
+            //             appData: producer.appData
+            //         });
+
+            //         console.log("callback 완료!!!!!");
+            //     } catch (error) {
+            //         console.error('Error consuming:', error);
+            //         callback({ error: 'Failed to consume' });
+            //     }
+            // });
             
-                if (!socket.consumerTransport) {
-                    console.error('Consumer transport not found for socket:', socket.id);
-                    callback({ error: 'Consumer transport not found' });
-                    return;
-                }
-            
-                if (!data || !data.dtlsParameters) {
-                    console.error('Invalid DTLS parameters received');
-                    callback({ error: 'Invalid DTLS parameters' });
-                    return;
-                }
-            
-                try {
-                    console.log('Attempting to connect consumer transport...');
-                    await socket.consumerTransport.connect({ dtlsParameters: data.dtlsParameters });
-                    
-                    console.log('Consumer transport connected successfully');
-                    
-                    socket.consumerTransport.on('connectionstatechange', (state) => {
-                        console.log('Consumer transport connection state changed to', state);
-                    });
-            
-                    callback({ success: true });
-                    console.log('connectConsumerTransport 완료!!');
-                } catch (error) {
-                    console.error('Error connecting consumer transport:', error);
-                    callback({ error: 'Failed to connect consumer transport', details: error.message });
-                }
-            });
     
             socket.on('resume', async (data, callback) => {
                 console.log("resume 시작!!!!!");
@@ -519,23 +531,19 @@ async function runSocketServer() {
                             frameRate,
                             muted: true
                         },
+                        codecOptions: {
+                            videoGoogleStartBitrate: 1000,
+                            videoGoogleMaxBitrate: 3000,
+                            videoGoogleMinBitrate: 100
+                        },
                         encodings: [
                             {
-                                maxBitrate: 5000000,
-                                scalabilityMode: 'L1T3',
-                                maxFramerate: 30
-                            },
-                            {
-                                maxBitrate: 1000000,
-                                scalabilityMode: 'L1T3',
-                                maxFramerate: 15
+                                maxBitrate: 3000000,
+                                scalabilityMode: 'S1T3'
                             }
-                        ],
-                        codecOptions: {
-                            videoGoogleStartBitrate: 1000
-                        }
+                        ]
                     });
-
+                    
                     console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
                     room.producers.set(producer.id, producer);
                     roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
@@ -791,114 +799,62 @@ async function runMediasoupWorker() {
 
 // createWebRtcTransport 함수 수정
 async function createWebRtcTransport(router, socket) {
-    const transportId = Math.random().toString(36).substr(2, 9);
-    console.log(`[Transport ${transportId}] Creating new WebRTC Transport`);
-    
-    const {
-        maxIncomingBitrate,
-        initialAvailableOutgoingBitrate,
-        listenIps
-    } = config.mediasoup.webRtcTransport;
-
     try {
-        const transport = await router.createWebRtcTransport({
-            listenIps,
-            enableUdp: true,
-            enableTcp: true,
-            preferUdp: true,
-            initialAvailableOutgoingBitrate,
-            enableSctp: true,
-            numSctpStreams: { OS: 1024, MIS: 1024 },
-            maxSctpMessageSize: 262144,
-            maxIncomingBitrate: 1500000,
-            minOutgoingBitrate: 100000,
-            // TURN 서버 설정 추가
-            turnServers: [
-                {
-                    urls: ['turn:3.34.193.132:3478'],
-                    username:  process.env.TURN_USERNAME,
-                    credential: process.env.TURN_CREDENTIAL
-                }
-            ]
-        });
-        // ICE 상태 모니터링 추가
-        const monitorIceStatus = () => {
-            console.log(`[Transport ${transport.id}] ICE Status:`, {
-                connectionState: transport.iceConnectionState,
-                selectedCandidate: transport.iceSelectedTuple,
-                localCandidatesCount: transport.iceLocalCandidates?.length || 0,
-                remoteCandidatesCount: transport.iceRemoteCandidates?.length || 0
-            });
-        };
-
-        const iceMonitorInterval = setInterval(monitorIceStatus, 5000);
-
-        // ICE candidate 수집 이벤트 리스너
-        transport.on('icecandidate', (candidate) => {
-            console.log(`[Transport ${transport.id}] New ICE candidate gathered:`, {
-                type: candidate.type,
-                protocol: candidate.protocol,
-                ip: candidate.ip,
-                port: candidate.port
-            });
-
-            // Producer ID가 있다면 함께 전송
-            const producerId = transport.appData.producerId;
-            sendIceCandidateToRemotePeer(socket, candidate, producerId);
-        });
-
-        // 연결 상태 모니터링 강화
-        transport.on('connectionstatechange', (state) => {
-            console.log(`[Transport ${transport.id}] Connection state changed to: ${state}`);
-            
-            if (state === 'failed' || state === 'disconnected') {
-                console.error(`[Transport ${transport.id}] Connection issues:`, {
-                    iceState: transport.iceState,
-                    dtlsState: transport.dtlsState,
-                    iceSelectedTuple: transport.iceSelectedTuple,
-                    localCandidatesCount: transport.iceLocalCandidates?.length || 0,
-                    remoteCandidatesCount: transport.iceRemoteCandidates?.length || 0,
-                    timestamp: new Date().toISOString()
-                });
-
-                // 연결 재시도
-                try {
-                    transport.restartIce();
-                } catch (error) {
-                    console.error('Failed to restart ICE:', error);
-                }
-            }
-        });
-
-        transport.on('close', () => {
-            console.log(`[Transport ${transport.id}] Transport closed`);
-            clearInterval(iceMonitorInterval);
-        });
-
-        // 최대 수신 비트레이트 설정
-        if (maxIncomingBitrate) {
-            try {
-                await transport.setMaxIncomingBitrate(maxIncomingBitrate);
-            } catch (error) {
-                console.error(`[Transport ${transport.id}] Error setting max incoming bitrate:`, error);
-            }
+      const transport = await router.createWebRtcTransport({
+        listenIps: config.mediasoup.webRtcTransport.listenIps,
+        enableUdp: true,
+        enableTcp: true,
+        preferUdp: true,
+        initialAvailableOutgoingBitrate: config.mediasoup.webRtcTransport.initialAvailableOutgoingBitrate,
+        enableSctp: true,
+        numSctpStreams: { OS: 1024, MIS: 1024 },
+      });
+  
+      // ICE 상태 모니터링
+      transport.on('icestatechange', (iceState) => {
+        console.log('ICE state changed to', iceState);
+        if (iceState === 'disconnected' || iceState === 'failed') {
+          console.error('ICE connection failed:', {
+            iceState,
+            dtlsState: transport.dtlsState,
+            iceSelectedTuple: transport.iceSelectedTuple
+          });
         }
-
-        return {
-            transport,
-            params: {
-                id: transport.id,
-                iceParameters: transport.iceParameters,
-                iceCandidates: transport.iceCandidates,
-                dtlsParameters: transport.dtlsParameters,
-                sctpParameters: transport.sctpParameters
-            }
-        };
+      });
+  
+      // DTLS 상태 모니터링
+      transport.on('dtlsstatechange', (dtlsState) => {
+        console.log('DTLS state changed to', dtlsState);
+      });
+  
+      transport.on('close', () => {
+        console.log('transport closed');
+      });
+  
+      // 최대 수신 비트레이트 설정
+      if (config.mediasoup.webRtcTransport.maxIncomingBitrate) {
+        try {
+          await transport.setMaxIncomingBitrate(config.mediasoup.webRtcTransport.maxIncomingBitrate);
+        } catch (error) {
+          console.error('Error setting max incoming bitrate:', error);
+        }
+      }
+  
+      return {
+        transport,
+        params: {
+          id: transport.id,
+          iceParameters: transport.iceParameters,
+          iceCandidates: transport.iceCandidates,
+          dtlsParameters: transport.dtlsParameters,
+          sctpParameters: transport.sctpParameters,
+        },
+      };
     } catch (error) {
-        console.error(`[Transport create] Error:`, error);
-        throw error;
+      console.error('Error creating WebRTC transport:', error);
+      throw error;
     }
-}
+  }
 
 async function joinRoom(socket, studyroomId, memberId, appInfo) {
     console.log(`User ${memberId} joined study room ${studyroomId} with app info:`, appInfo);
@@ -1019,37 +975,6 @@ function sendIceCandidateToRemotePeer(socket, candidate, producerId = null) {
     } catch (error) {
         console.error('Error sending ICE candidate to remote peer:', error);
     }
-}
-
-process.on('SIGINT', cleanup);
-process.on('SIGTERM', cleanup);
-
-async function cleanup() {
-    console.log('Cleaning up...');
-    
-    // Worker 정리
-    if (worker) {
-        await worker.close();
-    }
-    
-    // Rooms 정리
-    for (const [studyroomId, room] of roomManager.rooms) {
-        if (room.router) {
-            await room.router.close();
-        }
-    }
-    
-    // Socket 연결 정리
-    if (socketServer) {
-        await new Promise(resolve => socketServer.close(resolve));
-    }
-    
-    // HTTP 서버 정리
-    if (webServer) {
-        await new Promise(resolve => webServer.close(resolve));
-    }
-    
-    process.exit(0);
 }
 
 module.exports = {
