@@ -108,6 +108,29 @@ class RoomManager extends EventEmitter {
     constructor() {
         super();
         this.rooms = new Map();
+        this.locks = new Map(); // 락을 저장할 Map
+        this.lockTimeout = 10000; // 10초 타임아웃
+    }
+    
+    // In-memory 락 구현
+    async acquireLock(resourceId) {
+        const start = Date.now();
+        
+        while (Date.now() - start < this.lockTimeout) {
+            if (!this.locks.has(resourceId)) {
+                this.locks.set(resourceId, true);
+                
+                return {
+                    release: async () => {
+                        this.locks.delete(resourceId);
+                    }
+                };
+            }
+            // 다른 프로세스가 락을 얻을 기회를 주기 위해 잠시 대기
+            await new Promise(resolve => setTimeout(resolve, 100));
+        }
+        
+        throw new Error('Failed to acquire lock: timeout');
     }
 
     createRoom(studyroomId) {
