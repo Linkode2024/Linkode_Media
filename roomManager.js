@@ -7,14 +7,31 @@ class Room {
         this.activeScreenShare = null;
         this.producers = new Map();
         this.consuemrs = new Map();
+        this.events = new EventEmitter();
+        this.setupEventHandlers();
+    }
+
+    setupEventHandlers() {
+        this.events.on('memberAdded', (memberId) => {
+            console.log(`Member ${memberId} added to room ${this.studyroomId}`);
+        });
+
+        this.events.on('memberRemoved', (memberId) => {
+            console.log(`Member ${memberId} removed from room ${this.studyroomId}`);
+            if (this.activeScreenShare?.memberId === memberId) {
+                this.clearActiveScreenShare();
+            }
+        });
     }
 
     addMember(memberId, appInfo) {
-        this.members.set(memberId, {appInfo} );
+        this.members.set(memberId, { appInfo });
+        this.events.emit('memberAdded', memberId);
     }
 
     removeMember(memberId) {
         this.members.delete(memberId);
+        this.events.emit('memberRemoved', memberId);
     }
 
     updateMemberAppUsage(memberId, appInfo) {
@@ -64,6 +81,27 @@ class Room {
         }
         return null;
     }
+    async cleanup() {
+        // 모든 producer 정리
+        for (const [_, producer] of this.producers) {
+            await producer.close();
+        }
+        this.producers.clear();
+
+        // 모든 consumer 정리
+        for (const [_, consumer] of this.consumers) {
+            await consumer.close();
+        }
+        this.consumers.clear();
+
+        // Router 정리
+        if (this.router) {
+            await this.router.close();
+        }
+
+        // 이벤트 리스너 정리
+        this.events.removeAllListeners();
+    }
 }
 
 class RoomManager extends EventEmitter {
@@ -95,13 +133,18 @@ class RoomManager extends EventEmitter {
         return false;
     }
 
-    joinRoom(studyroomId, memberId, appInfo) {
-        let room = this.getRoom(studyroomId);
-        if (!room) {
-            room = this.createRoom(studyroomId);
+    async joinRoom(studyroomId, memberId, appInfo) {
+        const lock = await this.acquireLock(studyroomId);
+        try {
+            let room = this.getRoom(studyroomId);
+            if (!room) {
+                room = this.createRoom(studyroomId);
+            }
+            room.addMember(memberId, appInfo);
+            this.emit('memberJoined', studyroomId, memberId, appInfo);
+        } finally {
+            await lock.release();
         }
-        room.addMember(memberId, appInfo);
-        this.emit('memberJoined', studyroomId, memberId, appInfo);
     }
 
     leaveRoom(studyroomId, memberId) {
@@ -173,6 +216,17 @@ class RoomManager extends EventEmitter {
     getActiveScreenShare(studyroomId) {
         const room = this.getRoom(studyroomId);
         return room ? room.getActiveScreenShare() : null;
+    }
+
+    async removeAllRoom(studyroomId) {
+        const room = this.rooms.get(studyroomId);
+        if (room) {
+            await room.cleanup();
+            this.rooms.delete(studyroomId);
+            this.emit('roomRemoved', studyroomId);
+            return true;
+        }
+        return false;
     }
 }
 

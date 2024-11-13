@@ -324,8 +324,14 @@ async function runSocketServer() {
                     callback(params);
                     console.log('크리에이트 프로듀서 callback 완료!!!!');
                 } catch (err) {
-                    console.error('Error creating producer transport:', err);
-                    callback({ error: 'Failed to create producer transport' });
+                    const errorDetails = {
+                        error: 'Failed to create producer transport',
+                        code: err.code || 500,
+                        details: err.message,
+                        timestamp: new Date().toISOString()
+                    };
+                    console.error('Error creating producer transport:', errorDetails);
+                    callback(errorDetails);
                 }
             });
             
@@ -434,71 +440,6 @@ async function runSocketServer() {
                 }
             });
     
-            // socket.on('consume', async (data, callback) => {
-            //     console.log("consume 진입!!!!!!!");
-
-            //     if (!socket.studyroomId) {
-            //         callback({ error: 'Not in a room' });
-            //         return;
-            //     }
-
-            //      // 콜백이 함수인지 확인
-            //     if (typeof callback !== 'function') {
-            //         console.error('Callback is not a function');
-            //         return;
-            //     }
-
-            //     try {
-            //         const room = roomManager.getRoom(socket.studyroomId);
-            //         const producer = room.producers.get(data.producerId);
-            //         console.log("produce 아이디 : ", data.producerId);
-            //         if (!producer) {
-            //             callback({ error: 'Producer not found' });
-            //             return;
-            //         }
-    
-            //         const rtpCapabilities = data.rtpCapabilities;
-            //         if (!room.router.canConsume({
-            //             producerId: data.producerId,
-            //             rtpCapabilities,
-            //         })) {
-            //             callback({ error: 'Cannot consume' });
-            //             return;
-            //         }
-    
-            //         const consumer = await socket.consumerTransport.consume({
-            //             producerId: data.producerId,
-            //             rtpCapabilities,
-            //             paused: producer.kind === 'video',
-            //         });
-            //         room.consumers.set(consumer.id, consumer); 
-            //         consumer.on('transportclose', () => {
-            //             console.log('Transport closed for consumer');
-            //         });
-
-            //         consumer.on('producerclose', () => {
-            //             console.log('Producer closed for consumer');
-            //             socket.emit('consumerClosed', { consumerId: consumer.id });
-            //         });
-    
-            //         callback({
-            //             producerId: data.producerId,
-            //             id: consumer.id,
-            //             kind: consumer.kind,
-            //             rtpParameters: consumer.rtpParameters,
-            //             type: consumer.type,
-            //             producerPaused: consumer.producerPaused,
-            //             appData: producer.appData
-            //         });
-
-            //         console.log("callback 완료!!!!!");
-            //     } catch (error) {
-            //         console.error('Error consuming:', error);
-            //         callback({ error: 'Failed to consume' });
-            //     }
-            // });
-            
-    
             socket.on('resume', async (data, callback) => {
                 console.log("resume 시작!!!!!");
                 try {
@@ -594,7 +535,7 @@ async function runSocketServer() {
                             videoGoogleStartBitrate: 1000
                         }
                     });
-                    
+
                     console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
                     room.producers.set(producer.id, producer);
                     roomManager.startScreenShare(socket.studyroomId, socket.memberId, producer.id);
@@ -860,7 +801,6 @@ async function createWebRtcTransport(router, socket) {
     } = config.mediasoup.webRtcTransport;
 
     try {
-        // 중복 제거하고 설정 정리
         const transport = await router.createWebRtcTransport({
             listenIps,
             enableUdp: true,
@@ -875,9 +815,9 @@ async function createWebRtcTransport(router, socket) {
             // TURN 서버 설정 추가
             turnServers: [
                 {
-                    urls: ['turn:your-turn-server.com:3478'],
-                    username: 'username',
-                    credential: 'credential'
+                    urls: ['turn:3.34.193.132:3478'],
+                    username:  process.env.TURN_USERNAME,
+                    credential: process.env.TURN_CREDENTIAL
                 }
             ]
         });
@@ -1079,6 +1019,37 @@ function sendIceCandidateToRemotePeer(socket, candidate, producerId = null) {
     } catch (error) {
         console.error('Error sending ICE candidate to remote peer:', error);
     }
+}
+
+process.on('SIGINT', cleanup);
+process.on('SIGTERM', cleanup);
+
+async function cleanup() {
+    console.log('Cleaning up...');
+    
+    // Worker 정리
+    if (worker) {
+        await worker.close();
+    }
+    
+    // Rooms 정리
+    for (const [studyroomId, room] of roomManager.rooms) {
+        if (room.router) {
+            await room.router.close();
+        }
+    }
+    
+    // Socket 연결 정리
+    if (socketServer) {
+        await new Promise(resolve => socketServer.close(resolve));
+    }
+    
+    // HTTP 서버 정리
+    if (webServer) {
+        await new Promise(resolve => webServer.close(resolve));
+    }
+    
+    process.exit(0);
 }
 
 module.exports = {
