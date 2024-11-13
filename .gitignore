@@ -3,3 +3,4 @@ config
 node_modules
 lib
 .env
+mysql.js
