@@ -279,80 +279,38 @@ async function runSocketServer() {
                 }
             });
 
-            async function createWebRtcTransport(router, socket) {
-                const { webRtcTransport: transportConfig } = config.mediasoup;
-              
+            socket.on('createProducerTransport', async (data, callback) => {
                 try {
-                    console.log('Creating WebRTC transport with config:', {
-                        listenIps: transportConfig.listenIps,
-                        enableUdp: transportConfig.enableUdp,
-                        enableTcp: transportConfig.enableTcp
-                    });
-            
-                    const transport = await router.createWebRtcTransport({
-                        ...transportConfig,
-                        enableSctp: true,
-                        numSctpStreams: { OS: 1024, MIS: 1024 }
-                    });
-            
-                    console.log(`Transport created with ID: ${transport.id}`);
-            
-                    // ICE 상태 모니터링
-                    let gatheredCandidates = [];
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    const { transport, params } = await createWebRtcTransport(room.router, socket);
+                    socket.producerTransport = transport;
                     
-                    transport.on('icegatheringstatechange', (state) => {
-                        console.log(`[Transport ${transport.id}] ICE gathering state: ${state}`);
-                        if (state === 'complete') {
-                            console.log('Gathered candidates:', gatheredCandidates);
-                        }
-                    });
-            
-                    transport.on('icecandidate', (iceCandidate) => {
-                        console.log(`[Transport ${transport.id}] New ICE candidate:`, iceCandidate);
-                        gatheredCandidates.push(iceCandidate);
-                        
-                        // 즉시 클라이언트에게 전송
-                        socket.emit('iceCandidate', {
-                            transportId: transport.id,
-                            candidate: iceCandidate
-                        });
-                    });
-            
-                    transport.on('icestatechange', (state) => {
-                        console.log(`[Transport ${transport.id}] ICE state: ${state}`);
-                        if (state === 'failed') {
-                            console.error('ICE connection failed:', {
-                                iceState: transport.iceState,
-                                dtlsState: transport.dtlsState,
-                                iceSelectedTuple: transport.iceSelectedTuple
-                            });
-                            
-                            // 자동 재시도
-                            transport.restartIce()
-                                .then(() => console.log('ICE restart initiated'))
-                                .catch(err => console.error('ICE restart failed:', err));
-                        }
-                    });
-            
-                    transport.observer.on('close', () => {
-                        console.log(`[Transport ${transport.id}] Transport closed`);
-                    });
-            
-                    return {
-                        transport,
-                        params: {
-                            id: transport.id,
-                            iceParameters: transport.iceParameters,
-                            iceCandidates: transport.iceCandidates,
-                            dtlsParameters: transport.dtlsParameters,
-                            sctpParameters: transport.sctpParameters,
-                        },
+                    // ICE 재시도 타이머 설정
+                    let iceRetryTimeout;
+                    const startIceRetryTimer = () => {
+                        clearTimeout(iceRetryTimeout);
+                        iceRetryTimeout = setTimeout(() => {
+                            console.log('ICE connection timeout, restarting...');
+                            transport.restartIce();
+                        }, 8000);
                     };
+    
+                    transport.on('icestatechange', (state) => {
+                        if (state === 'connected') {
+                            clearTimeout(iceRetryTimeout);
+                        } else if (state === 'failed') {
+                            startIceRetryTimer();
+                        }
+                    });
+    
+                    startIceRetryTimer();
+                    callback(params);
+    
                 } catch (error) {
-                    console.error('Error creating WebRTC transport:', error);
-                    throw error;
+                    console.error('Error creating producer transport:', error);
+                    callback({ error: error.message });
                 }
-            }
+            });
     
             // ICE candidate 처리 핸들러
             socket.on('addIceCandidate', async ({ transportId, candidate }) => {
