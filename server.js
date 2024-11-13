@@ -9,7 +9,7 @@ const config = require('./config');
 const path = require('path');
 const cors = require('cors');
 const RoomManager = require('./roomManager');
-const userDBC = require('./database/mysql.js')
+const userDBC = require('./mysql');
 
 let worker;
 let webServer;
