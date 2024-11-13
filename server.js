@@ -578,17 +578,21 @@ async function runSocketServer() {
                             frameRate,
                             muted: true
                         },
-                        codecOptions: {
-                            videoGoogleStartBitrate: 1000,
-                            videoGoogleMaxBitrate: 3000,
-                            videoGoogleMinBitrate: 100
-                        },
                         encodings: [
                             {
-                                maxBitrate: 3000000,
-                                scalabilityMode: 'S1T3'
+                                maxBitrate: 5000000,
+                                scalabilityMode: 'L1T3',
+                                maxFramerate: 30
+                            },
+                            {
+                                maxBitrate: 1000000,
+                                scalabilityMode: 'L1T3',
+                                maxFramerate: 15
                             }
-                        ]
+                        ],
+                        codecOptions: {
+                            videoGoogleStartBitrate: 1000
+                        }
                     });
                     
                     console.log(`프로듀서 생성 완료함!!!! ID: ${producer.id}`);
@@ -866,15 +870,17 @@ async function createWebRtcTransport(router, socket) {
             enableSctp: true,
             numSctpStreams: { OS: 1024, MIS: 1024 },
             maxSctpMessageSize: 262144,
-            enableIceUdpMux: true,
-            additionalSettings: {
-                iceTransportPolicy: 'all',
-                bundlePolicy: 'max-bundle',
-                rtcpMuxPolicy: 'require',
-                iceCandidatePoolSize: 10
-            }
+            maxIncomingBitrate: 1500000,
+            minOutgoingBitrate: 100000,
+            // TURN 서버 설정 추가
+            turnServers: [
+                {
+                    urls: ['turn:your-turn-server.com:3478'],
+                    username: 'username',
+                    credential: 'credential'
+                }
+            ]
         });
-
         // ICE 상태 모니터링 추가
         const monitorIceStatus = () => {
             console.log(`[Transport ${transport.id}] ICE Status:`, {
