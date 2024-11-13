@@ -4,7 +4,7 @@ FROM node:20
 WORKDIR /app
 
 # package.json 파일을 먼저 복사하고 npm install 실행
-COPY LINKODE_MEDIA/package*.json ./
+COPY package.json package-lock.json ./
 
 RUN \
     set -x \
@@ -13,7 +13,7 @@ RUN \
     && npm install
 
 # 나머지 파일 복사
-COPY LINKODE_MEDIA/* ./
+COPY . .
 
 # 포트 노출
 EXPOSE 9000
