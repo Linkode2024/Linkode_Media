@@ -278,6 +278,77 @@ async function runSocketServer() {
                     socket.emit('error', { message: 'Failed to update app usage' });
                 }
             });
+
+            socket.on('createProducerTransport', async (data, callback) => {
+                try {
+                    const room = roomManager.getRoom(socket.studyroomId);
+                    const { transport, params } = await createWebRtcTransport(room.router, socket);
+                    socket.producerTransport = transport;
+                    
+                    // ICE 재시도 타이머 설정
+                    let iceRetryTimeout;
+                    const startIceRetryTimer = () => {
+                        clearTimeout(iceRetryTimeout);
+                        iceRetryTimeout = setTimeout(() => {
+                            console.log('ICE connection timeout, restarting...');
+                            transport.restartIce();
+                        }, 8000);
+                    };
+    
+                    transport.on('icestatechange', (state) => {
+                        if (state === 'connected') {
+                            clearTimeout(iceRetryTimeout);
+                        } else if (state === 'failed') {
+                            startIceRetryTimer();
+                        }
+                    });
+    
+                    startIceRetryTimer();
+                    callback(params);
+    
+                } catch (error) {
+                    console.error('Error creating producer transport:', error);
+                    callback({ error: error.message });
+                }
+            });
+    
+            // ICE candidate 처리 핸들러
+            socket.on('addIceCandidate', async ({ transportId, candidate }) => {
+                try {
+                    const transport = socket.producerTransport?.id === transportId 
+                        ? socket.producerTransport 
+                        : socket.consumerTransport;
+    
+                    if (!transport) {
+                        console.error(`Transport not found for ID: ${transportId}`);
+                        return;
+                    }
+    
+                    await transport.addIceCandidate(candidate);
+                    console.log('ICE candidate added successfully');
+                } catch (error) {
+                    console.error('Error adding ICE candidate:', error);
+                }
+            });
+    
+            // ICE 재연결 요청 핸들러
+            socket.on('restartIce', async ({ transportId }, callback) => {
+                try {
+                    const transport = socket.producerTransport?.id === transportId 
+                        ? socket.producerTransport 
+                        : socket.consumerTransport;
+    
+                    if (!transport) {
+                        throw new Error('Transport not found');
+                    }
+    
+                    const iceParameters = await transport.restartIce();
+                    callback({ iceParameters });
+                } catch (error) {
+                    console.error('Error restarting ICE:', error);
+                    callback({ error: error.message });
+                }
+            });
     
             socket.on('leaveRoom', async (callback) => {
                 try {
@@ -301,53 +372,6 @@ async function runSocketServer() {
                 } catch (error) {
                     console.error('Error getting RTP capabilities:', error);
                     callback({ error: 'Failed to get RTP capabilities' });
-                }
-            });
-    
-            socket.on('createProducerTransport', async (data, callback) => {
-                try {
-                    if (typeof callback !== 'function') {
-                        console.error('createProducerTransport called without a valid callback');
-                        return;
-                    }
-                
-                    if (!socket.studyroomId) {
-                        callback({ error: 'Not in a room' });
-                        return;
-                    }
-                
-                    const room = roomManager.getRoom(socket.studyroomId);
-                    // socket 파라미터 추가
-                    const { transport, params } = await createWebRtcTransport(room.router, socket);
-                    socket.producerTransport = transport;
-            
-                    callback(params);
-                    console.log('크리에이트 프로듀서 callback 완료!!!!');
-                } catch (err) {
-                    console.error('Error creating producer transport:', err);
-                    callback({ error: 'Failed to create producer transport' });
-                }
-            });
-            
-            socket.on('createConsumerTransport', async (data, callback) => {
-                try {
-                    if (!socket.studyroomId) {
-                        callback({ error: 'Not in a room' });
-                        return;
-                    }
-            
-                    if (typeof callback !== 'function') {
-                        console.error('createConsumerTransport 콜백 함수 아님');
-                        return;
-                    }
-                    const room = roomManager.getRoom(socket.studyroomId);
-                    // socket 파라미터 추가
-                    const { transport, params } = await createWebRtcTransport(room.router, socket);
-                    socket.consumerTransport = transport;
-                    callback(params);
-                } catch (err) {
-                    console.error('Error creating consumer transport:', err);
-                    callback({ error: 'Failed to create consumer transport' });
                 }
             });
     
@@ -386,72 +410,6 @@ async function runSocketServer() {
                   callback({ error: error.message });
                 }
               });
-    
-            // socket.on('consume', async (data, callback) => {
-            //     console.log("consume 진입!!!!!!!");
-
-            //     if (!socket.studyroomId) {
-            //         callback({ error: 'Not in a room' });
-            //         return;
-            //     }
-
-            //      // 콜백이 함수인지 확인
-            //     if (typeof callback !== 'function') {
-            //         console.error('Callback is not a function');
-            //         return;
-            //     }
-
-            //     try {
-            //         const room = roomManager.getRoom(socket.studyroomId);
-            //         const producer = room.producers.get(data.producerId);
-            //         console.log("produce 아이디 : ", data.producerId);
-            //         if (!producer) {
-            //             callback({ error: 'Producer not found' });
-            //             return;
-            //         }
-    
-            //         const rtpCapabilities = data.rtpCapabilities;
-            //         if (!room.router.canConsume({
-            //             producerId: data.producerId,
-            //             rtpCapabilities,
-            //         })) {
-            //             callback({ error: 'Cannot consume' });
-            //             return;
-            //         }
-    
-            //         const consumer = await socket.consumerTransport.consume({
-            //             producerId: data.producerId,
-            //             rtpCapabilities,
-            //             paused: producer.kind === 'video',
-            //         });
-            //         room.consumers.set(consumer.id, consumer); 
-            //         consumer.on('transportclose', () => {
-            //             console.log('Transport closed for consumer');
-            //         });
-
-            //         consumer.on('producerclose', () => {
-            //             console.log('Producer closed for consumer');
-            //             socket.emit('consumerClosed', { consumerId: consumer.id });
-            //         });
-    
-            //         callback({
-            //             producerId: data.producerId,
-            //             id: consumer.id,
-            //             kind: consumer.kind,
-            //             rtpParameters: consumer.rtpParameters,
-            //             type: consumer.type,
-            //             producerPaused: consumer.producerPaused,
-            //             appData: producer.appData
-            //         });
-
-            //         console.log("callback 완료!!!!!");
-            //     } catch (error) {
-            //         console.error('Error consuming:', error);
-            //         callback({ error: 'Failed to consume' });
-            //     }
-            // });
-            
-    
             socket.on('resume', async (data, callback) => {
                 console.log("resume 시작!!!!!");
                 try {
@@ -797,47 +755,69 @@ async function runMediasoupWorker() {
     });
 }
 
-// createWebRtcTransport 함수 수정
+// createWebRtcTransport 함수를 다음과 같이 교체
 async function createWebRtcTransport(router, socket) {
+    const { webRtcTransport: transportConfig } = config.mediasoup;
+  
     try {
       const transport = await router.createWebRtcTransport({
-        listenIps: config.mediasoup.webRtcTransport.listenIps,
+        listenIps: transportConfig.listenIps,
         enableUdp: true,
         enableTcp: true,
         preferUdp: true,
-        initialAvailableOutgoingBitrate: config.mediasoup.webRtcTransport.initialAvailableOutgoingBitrate,
+        initialAvailableOutgoingBitrate: transportConfig.initialAvailableOutgoingBitrate,
         enableSctp: true,
         numSctpStreams: { OS: 1024, MIS: 1024 },
       });
   
-      // ICE 상태 모니터링
-      transport.on('icestatechange', (iceState) => {
-        console.log('ICE state changed to', iceState);
-        if (iceState === 'disconnected' || iceState === 'failed') {
-          console.error('ICE connection failed:', {
-            iceState,
-            dtlsState: transport.dtlsState,
-            iceSelectedTuple: transport.iceSelectedTuple
+      // ICE 상태 모니터링 추가
+      let gatheredCandidates = [];
+      
+      transport.on('icegatheringstatechange', (state) => {
+        console.log(`[Transport ${transport.id}] ICE gathering state: ${state}`);
+        if (state === 'gathering') {
+          console.log('Starting to gather candidates');
+        } else if (state === 'complete') {
+          console.log(`Gathered ${gatheredCandidates.length} candidates`);
+          gatheredCandidates.forEach((candidate, index) => {
+            console.log(`Candidate ${index + 1}:`, {
+              type: candidate.type,
+              protocol: candidate.protocol,
+              address: candidate.ip,
+              port: candidate.port
+            });
           });
         }
       });
   
-      // DTLS 상태 모니터링
-      transport.on('dtlsstatechange', (dtlsState) => {
-        console.log('DTLS state changed to', dtlsState);
+      transport.on('icecandidate', (iceCandidate) => {
+        gatheredCandidates.push(iceCandidate);
+        socket.emit('iceCandidate', {
+          transportId: transport.id,
+          candidate: iceCandidate
+        });
       });
   
-      transport.on('close', () => {
-        console.log('transport closed');
-      });
-  
-      // 최대 수신 비트레이트 설정
-      if (config.mediasoup.webRtcTransport.maxIncomingBitrate) {
-        try {
-          await transport.setMaxIncomingBitrate(config.mediasoup.webRtcTransport.maxIncomingBitrate);
-        } catch (error) {
-          console.error('Error setting max incoming bitrate:', error);
+      transport.on('icestatechange', (state) => {
+        console.log(`[Transport ${transport.id}] ICE state changed to ${state}`);
+        if (state === 'checking') {
+          console.log('ICE candidate pairs are being checked');
+          console.log('Current candidates:', gatheredCandidates.length);
+        } else if (state === 'connected') {
+          console.log('ICE connection established successfully');
+          console.log('Selected candidate pair:', transport.iceSelectedTuple);
+        } else if (state === 'disconnected') {
+          console.log('ICE connection disconnected - checking connection');
+        } else if (state === 'failed') {
+          console.error('ICE connection failed - attempting restart');
+          console.error('Last known ICE state:', transport.iceState);
+          console.error('Current DTLS state:', transport.dtlsState);
+          transport.restartIce();
         }
+      });
+  
+      if (transportConfig.maxIncomingBitrate) {
+        await transport.setMaxIncomingBitrate(transportConfig.maxIncomingBitrate);
       }
   
       return {
@@ -855,7 +835,8 @@ async function createWebRtcTransport(router, socket) {
       throw error;
     }
   }
-
+  
+  
 async function joinRoom(socket, studyroomId, memberId, appInfo) {
     console.log(`User ${memberId} joined study room ${studyroomId} with app info:`, appInfo);
     
