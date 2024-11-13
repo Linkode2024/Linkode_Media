@@ -9,7 +9,6 @@ const config = require('./config');
 const path = require('path');
 const cors = require('cors');
 const RoomManager = require('./roomManager');
-const userDBC = require('./mysql');
 
 let worker;
 let webServer;
@@ -689,33 +688,22 @@ async function runSocketServer() {
                 const studyroomId = socket.studyroomId;
                 console.log(`Sending alarm from ${socket.memberId} to ${targetMemberId} in room ${studyroomId}`);
 
-                try {
-                    // 호출한 사람의 닉네임 조회
-                    const senderInfo = userDBC.getMemberInfo(socket.memberId);
-                    const senderNickname = senderInfo ? senderInfo.nickname : 'Unknown User';
-            
-                    // 룸의 모든 소켓을 순회하여 targetMemberId를 가진 소켓을 찾습니다.
-                    const roomSockets = socketServer.sockets.adapter.rooms.get(targetMemberId);
-                    console.log(`Room sockets for ${studyroomId}:`, roomSockets);
-                    
-                    if (roomSockets) {
-                        for (const socketId of roomSockets) {
-                            const targetSocket = socketServer.sockets.sockets.get(socketId);
-                            if (targetSocket && targetSocket.memberId === targetMemberId) {
-                                targetSocket.emit('receivedAlarm', {
-                                    from: socket.memberId,
-                                    nickname: senderNickname // 닉네임 추가
-                                });
-                                console.log(`Alarm sent to member ${targetMemberId} with socketId ${socketId} from ${senderNickname}`);
-                                return;
-                            }
+                // 룸의 모든 소켓을 순회하여 targetMemberId를 가진 소켓을 찾습니다.
+                const roomSockets = socketServer.sockets.adapter.rooms.get(targetMemberId);
+                console.log(`Room sockets for ${studyroomId}:`, roomSockets);
+                if (roomSockets) {
+                    for (const socketId of roomSockets) {
+                        const targetSocket = socketServer.sockets.sockets.get(socketId);
+                        if (targetSocket && targetSocket.memberId === targetMemberId) {
+                            targetSocket.emit('receivedAlarm', {
+                                from: socket.memberId
+                            });
+                            console.log(`Alarm sent to member ${targetMemberId} with socketId ${socketId}`);
+                            return;
                         }
                     }
-                    console.log(`No socket found for memberId: ${targetMemberId}`);
-                } catch (error) {
-                    console.error('Error sending alarm:', error);
-                    socket.emit('error', { message: 'Failed to send alarm' });
                 }
+                console.log(`No socket found for memberId: ${targetMemberId}`);
             });
 
             socket.on('sendAlarmToAllMembers', () => {
